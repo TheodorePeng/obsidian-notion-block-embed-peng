@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildCanonicalNotionBlockUrl, parseNotionBlockUrl, parseNotionTargetFromSource } from "../src/notion/parser";
 
+const SHORTLINK_NBE_URL =
+  "https://www.shortlink.studio/1/obsidian%3A%2F%2Fnotion-block-embed%3Fvault%3DMy%2520Obsidian%26action%3Dopen-ref%26nbe%3Dp20260328161030-k7%3A%3Ab15oxob";
+
 describe("parseNotionBlockUrl", () => {
   it("parses notion block url", () => {
     const parsed = parseNotionBlockUrl(
@@ -68,6 +71,19 @@ describe("parseNotionTargetFromSource", () => {
     }
   });
 
+  it("parses single-line Shortlink Studio NBE URI mode", () => {
+    const target = parseNotionTargetFromSource(SHORTLINK_NBE_URL);
+    expect(target.mode).toBe("nbe_uri");
+    if (target.mode === "nbe_uri") {
+      expect(target.originalUrl).toBe(SHORTLINK_NBE_URL);
+      expect(target.action).toBe("open-ref");
+      expect(target.vault).toBe("My Obsidian");
+      expect(target.pageNbeId).toBe("p20260328161030-k7");
+      expect(target.blockNbeId).toBe("b15oxob");
+      expect(target.ref).toBe("p20260328161030-k7::b15oxob");
+    }
+  });
+
   it("parses page+heading mode", () => {
     const target = parseNotionTargetFromSource(`
 url: https://www.notion.so/03_Github-mp4-3294cb8807f2811ab8baf0a10f76a5ad?source=copy_link
@@ -100,5 +116,27 @@ heading: 一、GitHub网站基础介绍
         "obsidian://notion-block-embed?vault=My%20Vault&action=search&nbe=p20260328153045-k7::b7k2m9",
       ),
     ).toThrow("Unsupported NBE action");
+  });
+
+  it("rejects compressed Shortlink Studio URLs", () => {
+    expect(() => parseNotionTargetFromSource("https://www.shortlink.studio/s/not-supported")).toThrow(
+      "Unsupported Shortlink Studio NBE URL",
+    );
+  });
+
+  it("rejects Shortlink Studio URLs outside the exact simple /1/<encoded-target> shape", () => {
+    expect(() => parseNotionTargetFromSource(`${SHORTLINK_NBE_URL}?utm=test`)).toThrow(
+      "Unsupported Shortlink Studio NBE URL",
+    );
+    expect(() => parseNotionTargetFromSource(`${SHORTLINK_NBE_URL}/extra`)).toThrow(
+      "Unsupported Shortlink Studio NBE URL",
+    );
+  });
+
+  it("rejects Shortlink Studio URLs whose target is not an Obsidian NBE URI", () => {
+    const encodedTarget = encodeURIComponent("https://example.com/not-an-nbe-uri");
+    expect(() => parseNotionTargetFromSource(`https://www.shortlink.studio/1/${encodedTarget}`)).toThrow(
+      "NBE URI must use the obsidian:// scheme",
+    );
   });
 });

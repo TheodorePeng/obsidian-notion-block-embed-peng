@@ -14,6 +14,15 @@ const MARKDOWN_SOURCE = [
   "```",
 ].join("\n");
 
+const SHORTLINK_MARKDOWN_SOURCE = [
+  "# Title",
+  "```notion-embed",
+  `https://www.shortlink.studio/1/${encodeURIComponent(
+    "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9",
+  )}`,
+  "```",
+].join("\n");
+
 function createStore(initialRegistry = {}) {
   return new PersistedDataStore(createPersistedPluginData(DEFAULT_SETTINGS, {}, initialRegistry), vi.fn(async () => undefined));
 }
@@ -51,6 +60,53 @@ describe("NbeReferenceRegistryService", () => {
                 id: canvasNodeId,
                 type: "text",
                 text: MARKDOWN_SOURCE,
+              },
+            ],
+            edges: [],
+          });
+        }),
+      },
+      workspace: {},
+    };
+
+    const service = new NbeReferenceRegistryService(app as never, new Logger(), createStore());
+    await service.rebuild();
+
+    const entry = service.getEntry("p20260328153045-k7::b7k2m9");
+    expect(entry).toBeTruthy();
+    expect(entry?.locations).toEqual([
+      {
+        kind: "markdown",
+        key: "md:Note.md:1:3",
+        path: "Note.md",
+        lineStart: 1,
+        lineEnd: 3,
+      },
+      {
+        kind: "canvas",
+        key: `canvas:Board.canvas:${canvasNodeId}`,
+        path: "Board.canvas",
+        nodeId: canvasNodeId,
+      },
+    ]);
+  });
+
+  it("rebuilds registry entries from Shortlink Studio markdown files and canvas text nodes", async () => {
+    const markdownFile = { path: "Note.md", extension: "md" };
+    const canvasFile = { path: "Board.canvas", extension: "canvas" };
+    const canvasNodeId = "node-1";
+    const app = {
+      vault: {
+        getMarkdownFiles: vi.fn(() => [markdownFile]),
+        getFiles: vi.fn(() => [markdownFile, canvasFile]),
+        read: vi.fn(async (file: { path: string }) => {
+          if (file.path === "Note.md") return SHORTLINK_MARKDOWN_SOURCE;
+          return JSON.stringify({
+            nodes: [
+              {
+                id: canvasNodeId,
+                type: "text",
+                text: SHORTLINK_MARKDOWN_SOURCE,
               },
             ],
             edges: [],

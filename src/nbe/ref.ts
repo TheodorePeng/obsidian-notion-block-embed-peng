@@ -6,6 +6,8 @@ export const NBE_PROTOCOL_ACTION = "notion-block-embed";
 export const NBE_OPEN_REF_ACTION = "open-ref";
 
 const NBE_ID_PART = /^[A-Za-z0-9_-]+$/;
+const SHORTLINK_HOST = "www.shortlink.studio";
+const SHORTLINK_SIMPLE_PREFIX = "/1/";
 
 export interface ParsedNbeProtocolUrl extends ParsedNbeRef {
   originalUrl: string;
@@ -39,10 +41,47 @@ export function normalizeNbeRef(raw: string): ParsedNbeRef {
   };
 }
 
+export function normalizeNbeUrlCandidate(rawUrl: string): string {
+  const original = rawUrl.trim();
+  if (/^obsidian:\/\//i.test(original)) {
+    return original;
+  }
+
+  let wrapper: URL;
+  try {
+    wrapper = new URL(original);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
+  }
+
+  if (!["http:", "https:"].includes(wrapper.protocol) || wrapper.hostname.toLowerCase() !== SHORTLINK_HOST) {
+    return original;
+  }
+  if (!wrapper.pathname.startsWith(SHORTLINK_SIMPLE_PREFIX) || wrapper.search || wrapper.hash) {
+    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
+  }
+
+  const encodedTarget = wrapper.pathname.slice(SHORTLINK_SIMPLE_PREFIX.length);
+  if (encodedTarget.includes("/")) {
+    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
+  }
+  if (!encodedTarget) {
+    throw new PluginError("INVALID_INPUT", "Missing Shortlink Studio target URL.");
+  }
+
+  try {
+    return decodeURIComponent(encodedTarget);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Shortlink Studio target encoding.");
+  }
+}
+
 export function parseNbeProtocolUrl(rawUrl: string, options?: { requireOpenRefAction?: boolean }): ParsedNbeProtocolUrl {
+  const originalUrl = rawUrl.trim();
+  const normalizedUrl = normalizeNbeUrlCandidate(originalUrl);
   let url: URL;
   try {
-    url = new URL(rawUrl.trim());
+    url = new URL(normalizedUrl);
   } catch {
     throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
   }
@@ -68,7 +107,7 @@ export function parseNbeProtocolUrl(rawUrl: string, options?: { requireOpenRefAc
   }
 
   return {
-    originalUrl: rawUrl.trim(),
+    originalUrl,
     action,
     vault: url.searchParams.get("vault")?.trim() || undefined,
     ...normalizeNbeRef(nbeParam),

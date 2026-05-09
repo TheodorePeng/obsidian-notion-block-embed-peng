@@ -622,6 +622,7 @@ class LightweightNbePageScanner {
 }
 
 const NBE_URI_TEXT_PATTERN = /obsidian:\/\/notion-block-embed\?[^\s<>"']+/gi;
+const SHORTLINK_NBE_TEXT_PATTERN = /https?:\/\/www\.shortlink\.studio\/1\/[^\s<>"']+/gi;
 
 function extractNbeRefsFromBlock(block: NotionApiBlock): ParsedNbeRef[] {
   const richText = getTypeData(block).rich_text;
@@ -667,8 +668,10 @@ function extractNbeRefsFromRichTextItem(item: NotionApiRichText): ParsedNbeRef[]
 }
 
 function extractNbeUriCandidatesFromPlainText(text: string): string[] {
-  const matches = text.match(NBE_URI_TEXT_PATTERN);
-  if (!matches) return [];
+  const matches = [
+    ...(text.match(NBE_URI_TEXT_PATTERN) ?? []),
+    ...(text.match(SHORTLINK_NBE_TEXT_PATTERN) ?? []),
+  ];
   return matches
     .map((match) => match.replace(/[)\]}>，。！？、；：,.!?;:]+$/u, ""))
     .filter(Boolean);

@@ -49,4 +49,28 @@ describe('source-loader shared loads', () => {
     expect(firstResult.loaded.root?.children).toEqual(secondResult.loaded.root?.children);
     expect(secondResult.metrics.sharedLoadState).toBe('join');
   });
+
+  it('loads Shortlink Studio NBE sources through NBE ref resolution', async () => {
+    const source = `https://www.shortlink.studio/1/${encodeURIComponent(
+      'obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9',
+    )}`;
+    const repository = {
+      getBlockTree: vi.fn(),
+      getPageSectionByHeading: vi.fn(),
+      getBlockTreeByNbeRef: vi.fn(async () => ({
+        pageId: 'page-1',
+        blockId: 'block-1',
+        tree: createParagraphTree('block-1', 'Shortlink source'),
+      })),
+      cacheScopesForTarget: vi.fn(),
+      isLikelyWarmTarget: vi.fn(() => false),
+    };
+
+    const result = await loadEmbedFromSourceDetailed(source, DEFAULT_SETTINGS, repository as never);
+
+    expect(result.loaded.parsedTarget.mode).toBe('nbe_uri');
+    expect(repository.getBlockTreeByNbeRef).toHaveBeenCalledWith('p20260328153045-k7', 'b7k2m9', DEFAULT_SETTINGS.showChildren);
+    expect(repository.getBlockTree).not.toHaveBeenCalled();
+    expect(repository.getPageSectionByHeading).not.toHaveBeenCalled();
+  });
 });

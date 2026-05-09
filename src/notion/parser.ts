@@ -136,7 +136,7 @@ export function parseNotionTargetFromSource(source: string): ParsedNotionTarget 
   }
 
   if (lines.length === 1) {
-    if (/^obsidian:\/\//i.test(lines[0])) {
+    if (/^obsidian:\/\//i.test(lines[0]) || isShortlinkStudioUrl(lines[0])) {
       return parseNbeUri(lines[0]);
     }
     if (/^https?:\/\//i.test(lines[0])) {
@@ -161,4 +161,13 @@ export function parseNotionTargetFromSource(source: string): ParsedNotionTarget 
     pageId: page.pageId,
     heading,
   };
+}
+
+function isShortlinkStudioUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl.trim());
+    return ["http:", "https:"].includes(url.protocol) && url.hostname.toLowerCase() === "www.shortlink.studio";
+  } catch {
+    return false;
+  }
 }

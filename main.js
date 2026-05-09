@@ -1003,6 +1003,8 @@ var NBE_PROPERTY_NAME = "NBE ID";
 var NBE_PROTOCOL_ACTION = "notion-block-embed";
 var NBE_OPEN_REF_ACTION = "open-ref";
 var NBE_ID_PART = /^[A-Za-z0-9_-]+$/;
+var SHORTLINK_HOST = "www.shortlink.studio";
+var SHORTLINK_SIMPLE_PREFIX = "/1/";
 function normalizeIdPart(raw, label) {
   const value = raw.trim();
   if (!value) {
@@ -1027,10 +1029,42 @@ function normalizeNbeRef(raw) {
     blockNbeId
   };
 }
+function normalizeNbeUrlCandidate(rawUrl) {
+  const original = rawUrl.trim();
+  if (/^obsidian:\/\//i.test(original)) {
+    return original;
+  }
+  let wrapper;
+  try {
+    wrapper = new URL(original);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
+  }
+  if (!["http:", "https:"].includes(wrapper.protocol) || wrapper.hostname.toLowerCase() !== SHORTLINK_HOST) {
+    return original;
+  }
+  if (!wrapper.pathname.startsWith(SHORTLINK_SIMPLE_PREFIX) || wrapper.search || wrapper.hash) {
+    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
+  }
+  const encodedTarget = wrapper.pathname.slice(SHORTLINK_SIMPLE_PREFIX.length);
+  if (encodedTarget.includes("/")) {
+    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
+  }
+  if (!encodedTarget) {
+    throw new PluginError("INVALID_INPUT", "Missing Shortlink Studio target URL.");
+  }
+  try {
+    return decodeURIComponent(encodedTarget);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Shortlink Studio target encoding.");
+  }
+}
 function parseNbeProtocolUrl(rawUrl, options) {
+  const originalUrl = rawUrl.trim();
+  const normalizedUrl = normalizeNbeUrlCandidate(originalUrl);
   let url;
   try {
-    url = new URL(rawUrl.trim());
+    url = new URL(normalizedUrl);
   } catch {
     throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
   }
@@ -1052,7 +1086,7 @@ function parseNbeProtocolUrl(rawUrl, options) {
     throw new PluginError("INVALID_INPUT", 'Missing "nbe" in NBE URI.');
   }
   return {
-    originalUrl: rawUrl.trim(),
+    originalUrl,
     action,
     vault: url.searchParams.get("vault")?.trim() || void 0,
     ...normalizeNbeRef(nbeParam)
@@ -1170,7 +1204,7 @@ function parseNotionTargetFromSource(source) {
     };
   }
   if (lines.length === 1) {
-    if (/^obsidian:\/\//i.test(lines[0])) {
+    if (/^obsidian:\/\//i.test(lines[0]) || isShortlinkStudioUrl(lines[0])) {
       return parseNbeUri(lines[0]);
     }
     if (/^https?:\/\//i.test(lines[0])) {
@@ -1193,6 +1227,14 @@ function parseNotionTargetFromSource(source) {
     pageId: page.pageId,
     heading
   };
+}
+function isShortlinkStudioUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl.trim());
+    return ["http:", "https:"].includes(url.protocol) && url.hostname.toLowerCase() === "www.shortlink.studio";
+  } catch {
+    return false;
+  }
 }
 
 // src/embed/source-loader.ts
@@ -2047,6 +2089,7 @@ var LightweightNbePageScanner = class {
   }
 };
 var NBE_URI_TEXT_PATTERN = /obsidian:\/\/notion-block-embed\?[^\s<>"']+/gi;
+var SHORTLINK_NBE_TEXT_PATTERN = /https?:\/\/www\.shortlink\.studio\/1\/[^\s<>"']+/gi;
 function extractNbeRefsFromBlock(block) {
   const richText = getTypeData2(block).rich_text;
   if (!Array.isArray(richText)) return [];
@@ -2085,8 +2128,10 @@ function extractNbeRefsFromRichTextItem(item) {
   return Array.from(refs.values());
 }
 function extractNbeUriCandidatesFromPlainText(text) {
-  const matches = text.match(NBE_URI_TEXT_PATTERN);
-  if (!matches) return [];
+  const matches = [
+    ...text.match(NBE_URI_TEXT_PATTERN) ?? [],
+    ...text.match(SHORTLINK_NBE_TEXT_PATTERN) ?? []
+  ];
   return matches.map((match) => match.replace(/[)\]}>，。！？、；：,.!?;:]+$/u, "")).filter(Boolean);
 }
 function parseStrictNbeRefCandidate(rawUrl) {

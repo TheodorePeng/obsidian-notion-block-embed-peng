@@ -7,6 +7,14 @@ import { AsyncTtlCache } from "../src/embed/cache";
 import { NbeResolutionCacheStore, NotionRepository } from "../src/notion/repository";
 import { duplicateSyncedBlock, originalSyncedBlock, syncedSourceChildren } from "./fixtures/notion-api/synced-block";
 
+function makeNbeUri(ref: string, action = "open-ref"): string {
+  return `obsidian://notion-block-embed?vault=My%20Vault&action=${action}&nbe=${ref}`;
+}
+
+function makeShortlinkNbeUrl(ref: string, action = "open-ref"): string {
+  return `https://www.shortlink.studio/1/${encodeURIComponent(makeNbeUri(ref, action))}`;
+}
+
 function makeBlock(id: string, type: string, hasChildren = false): NotionApiBlock {
   return {
     object: "block",
@@ -534,6 +542,40 @@ describe("NotionRepository", () => {
     expect(resolved.blockId).toBe("block-1");
   });
 
+  it("resolves an NBE ref from Shortlink Studio rich-text links", async () => {
+    const ref = "p20260328153045-k7::b7k2m9";
+    const href = makeShortlinkNbeUrl(ref);
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => makeBlock(id, id === "page-1" ? "page" : "paragraph", id === "page-1")),
+      listBlockChildren: vi.fn(async (id: string) => (id === "page-1" ? [makeLinkedParagraph("block-1", href)] : [])),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    const resolved = await repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true);
+
+    expect(resolved.blockId).toBe("block-1");
+  });
+
+  it("resolves an NBE ref from markdown-style Shortlink Studio plain_text links", async () => {
+    const ref = "p20260328153045-k7::b7k2m9";
+    const href = makeShortlinkNbeUrl(ref);
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => makeBlock(id, id === "page-1" ? "page" : "paragraph", id === "page-1")),
+      listBlockChildren: vi.fn(async (id: string) =>
+        id === "page-1" ? [makePlainTextParagraph("block-1", `前缀 [🔗OB](${href}) 后缀`)] : []
+      ),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    const resolved = await repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true);
+
+    expect(resolved.blockId).toBe("block-1");
+  });
+
   it("deduplicates refs within a single block when both link metadata and plain_text point to the same NBE ref", async () => {
     const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
     const client = {
@@ -770,6 +812,21 @@ describe("NotionRepository", () => {
     );
   });
 
+  it("ignores Shortlink Studio links whose decoded NBE action is not open-ref", async () => {
+    const href = makeShortlinkNbeUrl("p20260328153045-k7::b7k2m9", "open-page");
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => makeBlock(id, id === "page-1" ? "page" : "paragraph", id === "page-1")),
+      listBlockChildren: vi.fn(async (id: string) => (id === "page-1" ? [makePlainTextParagraph("block-1", href)] : [])),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    await expect(repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true)).rejects.toThrow(
+      "NBE block not found on page",
+    );
+  });
+
   it("throws when multiple blocks on the same page match the same NBE ref", async () => {
     const ref = "p20260328153045-k7::b7k2m9";
     const href = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${ref}`;
@@ -798,6 +855,23 @@ describe("NotionRepository", () => {
         id === "page-1"
           ? [makePlainTextParagraph("block-1", `[🔗OB](${href})`), makePlainTextParagraph("block-2", href)]
           : []
+      ),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    await expect(repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true)).rejects.toThrow(
+      "Duplicate Block ID on page",
+    );
+  });
+
+  it("still throws duplicate errors when multiple blocks declare the same ref via Shortlink Studio links", async () => {
+    const href = makeShortlinkNbeUrl("p20260328153045-k7::b7k2m9");
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => makeBlock(id, id === "page-1" ? "page" : "paragraph", id === "page-1")),
+      listBlockChildren: vi.fn(async (id: string) =>
+        id === "page-1" ? [makeLinkedParagraph("block-1", href), makePlainTextParagraph("block-2", href)] : []
       ),
     };
 

@@ -36,7 +36,7 @@ export class NotionEmbedProcessor {
     el.appendChild(mount);
 
     let disposed = false;
-    let cleanupSignals = () => undefined;
+    let cleanupSignals: () => void = () => undefined;
 
     const rawSession = createRenderSession({
       ...this.deps,
