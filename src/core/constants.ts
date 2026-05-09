@@ -1,0 +1,14 @@
+export const NOTION_API_BASE = "https://api.notion.com/v1";
+export const NOTION_VERSION = "2022-06-28";
+export const MAX_TREE_DEPTH = 20;
+export const CACHE_TTL_MS = 60_000;
+export const TREE_CACHE_MAX_ENTRIES = 128;
+export const NBE_RESOLUTION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const NBE_RESOLUTION_CACHE_MAX_PAGES_PER_TOKEN = 256;
+export const NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN = 2048;
+export const REPOSITORY_TREE_CONCURRENCY = 2;
+export const REFRESH_ALL_CONCURRENCY = 2;
+export const REGISTRY_INCREMENTAL_DEBOUNCE_MS = 1_500;
+export const REGISTRY_LAZY_FULL_REBUILD_DELAY_MS = 10_000;
+export const INITIAL_RENDER_DELAY_MS = 120;
+export const INITIAL_RENDER_CONCURRENCY = 2;
