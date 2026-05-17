@@ -36,7 +36,7 @@ describe("rewriteNotionEmbedSourceUrl", () => {
 
   it("rewrites NBE URI embeds to a new NBE URI", () => {
     const source =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const next =
       "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b9z1x2";
     expect(rewriteNotionEmbedSourceUrl(source, next)).toBe(next);
@@ -44,7 +44,7 @@ describe("rewriteNotionEmbedSourceUrl", () => {
 
   it("rewrites NBE URI embeds to block URLs", () => {
     const source =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const next =
       "https://www.notion.so/03_Github-mp4-3294cb8807f2811ab8baf0a10f76a5ad#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     expect(rewriteNotionEmbedSourceUrl(source, next)).toBe(next);
@@ -54,20 +54,20 @@ describe("rewriteNotionEmbedSourceUrl", () => {
     const source =
       "https://www.notion.so/03_Github-mp4-3294cb8807f2811ab8baf0a10f76a5ad#d05907aae5b146d98eface29afae7844";
     const next =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     expect(rewriteNotionEmbedSourceUrl(source, next)).toBe(next);
   });
 
   it("allows plain Notion page URLs when rewriting NBE URIs from the footer field", () => {
     const source =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const next = "https://www.notion.so/another-page-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     expect(rewriteNotionEmbedSourceUrl(source, next)).toBe(next);
   });
 
   it("trims whitespace when rewriting single-line sources", () => {
     const source =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     expect(rewriteNotionEmbedSourceUrl(source, "   custom-free-text   ")).toBe("custom-free-text");
   });
 });
@@ -219,7 +219,7 @@ describe("applyNotionEmbedSourceUpdate", () => {
 
   it("updates the selected Canvas text node when editing from a canvas footer", async () => {
     const currentSource =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const canvasFile = { path: "Board.canvas", extension: "canvas" };
     const canvasData = {
       nodes: [
@@ -271,7 +271,7 @@ describe("applyNotionEmbedSourceUpdate", () => {
 
   it("falls back to a unique global canvas source match when there is no selected text node", async () => {
     const currentSource =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const canvasFile = { path: "Board.canvas", extension: "canvas" };
     const canvasData = {
       nodes: [
@@ -328,7 +328,7 @@ describe("applyNotionEmbedSourceUpdate", () => {
 
   it("rejects ambiguous canvas matches instead of updating the wrong text node", async () => {
     const currentSource =
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const canvasFile = { path: "Board.canvas", extension: "canvas" };
     const canvasData = {
       nodes: [

@@ -80,6 +80,178 @@ var REGISTRY_LAZY_FULL_REBUILD_DELAY_MS = 1e4;
 var INITIAL_RENDER_DELAY_MS = 120;
 var INITIAL_RENDER_CONCURRENCY = 2;
 
+// src/core/errors.ts
+var PluginError = class extends Error {
+  constructor(code, message, status, details) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.details = details;
+    this.name = "PluginError";
+  }
+};
+function toPluginError(value) {
+  if (value instanceof PluginError) return value;
+  return new PluginError("UNKNOWN", value instanceof Error ? value.message : String(value));
+}
+function userMessageFromError(error) {
+  const resolved = toPluginError(error);
+  if (resolved.code === "CONFIG_MISSING_TOKEN") {
+    return "Notion Integration Token is required. Set it in plugin settings.";
+  }
+  if (resolved.code === "INVALID_INPUT") {
+    return resolved.message;
+  }
+  if (resolved.code === "NOTION_UNAUTHORIZED") {
+    return "Notion authorization failed. Check your Integration Token.";
+  }
+  if (resolved.code === "NOTION_FORBIDDEN") {
+    return "Notion access denied. Share the page/block with your integration.";
+  }
+  if (resolved.code === "NOTION_NOT_FOUND") {
+    return "Notion block or page not found. Check the URL and permissions.";
+  }
+  if (resolved.code === "NOTION_RATE_LIMIT") {
+    return "Notion API rate limit reached. Please retry in a moment.";
+  }
+  if (resolved.code === "WRITE_CONFLICT") {
+    return "Remote content changed while editing. Refresh and try again.";
+  }
+  if (resolved.code === "NETWORK") {
+    return "Network error while contacting Notion API.";
+  }
+  return resolved.message;
+}
+
+// src/nbe/ref.ts
+var NBE_PROPERTY_NAME = "NBE ID";
+var NBE_PROTOCOL_ACTION = "notion-block-embed";
+var NBE_OPEN_REF_ACTION = "open-ref";
+var NBE_ID_PART = /^[A-Za-z0-9_-]+$/;
+var NBE_REF_SEPARATOR = "_";
+var LEGACY_NBE_REF_SEPARATOR = "::";
+var SHORTLINK_HOST = "www.shortlink.studio";
+var SHORTLINK_SIMPLE_PREFIX = "/1/";
+function normalizeIdPart(raw, label) {
+  const value = raw.trim();
+  if (!value) {
+    throw new PluginError("INVALID_INPUT", `${label} is required.`);
+  }
+  if (!NBE_ID_PART.test(value)) {
+    throw new PluginError("INVALID_INPUT", `Invalid ${label}: ${raw}`);
+  }
+  return value;
+}
+function normalizeNbeRef(raw) {
+  const value = raw.trim();
+  const parts = splitNbeRef(value);
+  const pageNbeId = normalizeIdPart(parts.pageNbeId, "Page ID");
+  const blockNbeId = normalizeIdPart(parts.blockNbeId, "Block ID");
+  return {
+    ref: buildCanonicalNbeRef(pageNbeId, blockNbeId),
+    pageNbeId,
+    blockNbeId
+  };
+}
+function buildNbeRef(pageNbeId, blockNbeId) {
+  const normalizedPageNbeId = normalizeIdPart(pageNbeId, "Page ID");
+  const normalizedBlockNbeId = normalizeIdPart(blockNbeId, "Block ID");
+  return {
+    ref: buildCanonicalNbeRef(normalizedPageNbeId, normalizedBlockNbeId),
+    pageNbeId: normalizedPageNbeId,
+    blockNbeId: normalizedBlockNbeId
+  };
+}
+function splitNbeRef(value) {
+  if (value.includes(LEGACY_NBE_REF_SEPARATOR)) {
+    const parts = value.split(LEGACY_NBE_REF_SEPARATOR);
+    if (parts.length !== 2) {
+      throwInvalidNbeRef();
+    }
+    return { pageNbeId: parts[0], blockNbeId: parts[1] };
+  }
+  const separatorIndex = value.lastIndexOf(NBE_REF_SEPARATOR);
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    throwInvalidNbeRef();
+  }
+  return {
+    pageNbeId: value.slice(0, separatorIndex),
+    blockNbeId: value.slice(separatorIndex + 1)
+  };
+}
+function throwInvalidNbeRef() {
+  throw new PluginError("INVALID_INPUT", "Invalid NBE reference. Expected <PageID>_<BlockID>.");
+}
+function buildCanonicalNbeRef(pageNbeId, blockNbeId) {
+  return `${pageNbeId}${NBE_REF_SEPARATOR}${blockNbeId}`;
+}
+function normalizeNbeUrlCandidate(rawUrl) {
+  const original = rawUrl.trim();
+  if (/^obsidian:\/\//i.test(original)) {
+    return original;
+  }
+  let wrapper;
+  try {
+    wrapper = new URL(original);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
+  }
+  if (!["http:", "https:"].includes(wrapper.protocol) || wrapper.hostname.toLowerCase() !== SHORTLINK_HOST) {
+    return original;
+  }
+  if (!wrapper.pathname.startsWith(SHORTLINK_SIMPLE_PREFIX) || wrapper.search || wrapper.hash) {
+    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
+  }
+  const encodedTarget = wrapper.pathname.slice(SHORTLINK_SIMPLE_PREFIX.length);
+  if (encodedTarget.includes("/")) {
+    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
+  }
+  if (!encodedTarget) {
+    throw new PluginError("INVALID_INPUT", "Missing Shortlink Studio target URL.");
+  }
+  try {
+    return decodeURIComponent(encodedTarget);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Shortlink Studio target encoding.");
+  }
+}
+function parseNbeProtocolUrl(rawUrl, options) {
+  const originalUrl = rawUrl.trim();
+  const normalizedUrl = normalizeNbeUrlCandidate(originalUrl);
+  let url;
+  try {
+    url = new URL(normalizedUrl);
+  } catch {
+    throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
+  }
+  if (url.protocol !== "obsidian:") {
+    throw new PluginError("INVALID_INPUT", "NBE URI must use the obsidian:// scheme.");
+  }
+  if (url.hostname !== NBE_PROTOCOL_ACTION) {
+    throw new PluginError("INVALID_INPUT", `Unsupported Obsidian action: ${url.hostname}`);
+  }
+  const action = (url.searchParams.get("action") ?? "").trim();
+  if (!action) {
+    throw new PluginError("INVALID_INPUT", 'Missing "action" in NBE URI.');
+  }
+  if (options?.requireOpenRefAction && action !== NBE_OPEN_REF_ACTION) {
+    throw new PluginError("INVALID_INPUT", `Unsupported NBE action: ${action}`);
+  }
+  const nbeParam = (url.searchParams.get("nbe") ?? "").trim();
+  if (!nbeParam) {
+    throw new PluginError("INVALID_INPUT", 'Missing "nbe" in NBE URI.');
+  }
+  return {
+    originalUrl,
+    action,
+    vault: url.searchParams.get("vault")?.trim() || void 0,
+    ...normalizeNbeRef(nbeParam)
+  };
+}
+function searchTokenForNbeRef(ref) {
+  return normalizeNbeRef(ref).ref;
+}
+
 // src/core/persisted-data.ts
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -136,16 +308,31 @@ function normalizeNbeRegistry(raw) {
   const registry = {};
   for (const [ref, value] of Object.entries(raw)) {
     if (!isRecord(value)) continue;
+    let parsedRef;
+    try {
+      parsedRef = normalizeNbeRef(ref);
+    } catch {
+      try {
+        parsedRef = typeof value.ref === "string" ? normalizeNbeRef(value.ref) : null;
+      } catch {
+        parsedRef = null;
+      }
+    }
+    if (!parsedRef) continue;
     const locations = Array.isArray(value.locations) ? value.locations.map(normalizeRegistryLocation).filter((item) => Boolean(item)) : [];
     const lastSeenAt = typeof value.lastSeenAt === "number" ? value.lastSeenAt : Date.now();
     const primaryLocationKey = typeof value.primaryLocationKey === "string" ? value.primaryLocationKey : void 0;
+    const existing = registry[parsedRef.ref];
+    const mergedLocations = existing ? [...existing.locations, ...locations].filter(
+      (location, index, all) => all.findIndex((item) => item.key === location.key) === index
+    ) : locations;
     const entry = {
-      ref,
-      locations,
-      primaryLocationKey: primaryLocationKey && locations.some((item) => item.key === primaryLocationKey) ? primaryLocationKey : void 0,
-      lastSeenAt
+      ref: parsedRef.ref,
+      locations: mergedLocations,
+      primaryLocationKey: primaryLocationKey && locations.some((item) => item.key === primaryLocationKey) ? primaryLocationKey : existing?.primaryLocationKey,
+      lastSeenAt: Math.max(lastSeenAt, existing?.lastSeenAt ?? 0)
     };
-    registry[ref] = entry;
+    registry[parsedRef.ref] = entry;
   }
   return registry;
 }
@@ -168,11 +355,22 @@ function normalizeResolvedTarget(raw, ref) {
   if (!isRecord(raw) || typeof raw.pageNbeId !== "string" || typeof raw.blockNbeId !== "string" || typeof raw.pageId !== "string" || typeof raw.blockId !== "string") {
     return null;
   }
+  let parsedRef;
+  try {
+    parsedRef = normalizeNbeRef(ref);
+  } catch {
+    try {
+      parsedRef = typeof raw.ref === "string" ? normalizeNbeRef(raw.ref) : null;
+    } catch {
+      parsedRef = null;
+    }
+  }
+  if (!parsedRef) return null;
   const resolvedAt = typeof raw.resolvedAt === "number" ? raw.resolvedAt : Date.now();
   return {
-    ref,
-    pageNbeId: raw.pageNbeId,
-    blockNbeId: raw.blockNbeId,
+    ref: parsedRef.ref,
+    pageNbeId: parsedRef.pageNbeId,
+    blockNbeId: parsedRef.blockNbeId,
     pageId: raw.pageId,
     blockId: raw.blockId,
     resolvedAt
@@ -199,8 +397,15 @@ function normalizeNbeResolvedTargetCache(raw) {
   const namespaces = {};
   for (const [tokenFingerprint2, namespace] of Object.entries(raw)) {
     if (!isRecord(namespace)) continue;
-    const normalizedEntries = Object.entries(namespace).map(([ref, value]) => [ref, normalizeResolvedTarget(value, ref)]).filter((entry) => Boolean(entry[1])).filter(([, target]) => target.resolvedAt + NBE_RESOLUTION_CACHE_TTL_MS > now2).sort(([, left], [, right]) => right.resolvedAt - left.resolvedAt).slice(0, NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN);
-    const normalizedNamespace = Object.fromEntries(normalizedEntries);
+    const normalizedEntries = Object.entries(namespace).map(([ref, value]) => normalizeResolvedTarget(value, ref)).filter((target) => Boolean(target)).filter((target) => target.resolvedAt + NBE_RESOLUTION_CACHE_TTL_MS > now2).sort((left, right) => right.resolvedAt - left.resolvedAt);
+    const normalizedNamespace = {};
+    for (const target of normalizedEntries) {
+      if (normalizedNamespace[target.ref]) continue;
+      normalizedNamespace[target.ref] = target;
+      if (Object.keys(normalizedNamespace).length >= NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN) {
+        break;
+      }
+    }
     if (Object.keys(normalizedNamespace).length === 0) continue;
     namespaces[tokenFingerprint2] = normalizedNamespace;
   }
@@ -299,7 +504,8 @@ var PersistedDataStore = class {
     return this.data.nbeResolutionCache[tokenFingerprint2]?.[pageNbeId] ? cloneResolvedPageIndex(this.data.nbeResolutionCache[tokenFingerprint2][pageNbeId]) : null;
   }
   getNbeResolvedTarget(tokenFingerprint2, ref) {
-    return this.data.nbeResolvedTargetCache[tokenFingerprint2]?.[ref] ? cloneResolvedTarget(this.data.nbeResolvedTargetCache[tokenFingerprint2][ref]) : null;
+    const normalizedRef = normalizeNbeRef(ref).ref;
+    return this.data.nbeResolvedTargetCache[tokenFingerprint2]?.[normalizedRef] ? cloneResolvedTarget(this.data.nbeResolvedTargetCache[tokenFingerprint2][normalizedRef]) : null;
   }
   setNbeResolutionPageIndex(tokenFingerprint2, pageIndex) {
     const nextCache = cloneResolutionCache(this.data.nbeResolutionCache);
@@ -360,14 +566,15 @@ var PersistedDataStore = class {
     return this.persistNow();
   }
   deleteNbeResolvedTarget(tokenFingerprint2, ref) {
-    if (!this.data.nbeResolvedTargetCache[tokenFingerprint2]?.[ref]) {
+    const normalizedRef = normalizeNbeRef(ref).ref;
+    if (!this.data.nbeResolvedTargetCache[tokenFingerprint2]?.[normalizedRef]) {
       return Promise.resolve();
     }
     const nextCache = cloneResolvedTargetCache(this.data.nbeResolvedTargetCache);
     const namespace = {
       ...nextCache[tokenFingerprint2] ?? {}
     };
-    delete namespace[ref];
+    delete namespace[normalizedRef];
     if (Object.keys(namespace).length === 0) {
       delete nextCache[tokenFingerprint2];
     } else {
@@ -566,49 +773,6 @@ function cloneResolvedTarget(target) {
     blockId: target.blockId,
     resolvedAt: target.resolvedAt
   };
-}
-
-// src/core/errors.ts
-var PluginError = class extends Error {
-  constructor(code, message, status, details) {
-    super(message);
-    this.code = code;
-    this.status = status;
-    this.details = details;
-    this.name = "PluginError";
-  }
-};
-function toPluginError(value) {
-  if (value instanceof PluginError) return value;
-  return new PluginError("UNKNOWN", value instanceof Error ? value.message : String(value));
-}
-function userMessageFromError(error) {
-  const resolved = toPluginError(error);
-  if (resolved.code === "CONFIG_MISSING_TOKEN") {
-    return "Notion Integration Token is required. Set it in plugin settings.";
-  }
-  if (resolved.code === "INVALID_INPUT") {
-    return resolved.message;
-  }
-  if (resolved.code === "NOTION_UNAUTHORIZED") {
-    return "Notion authorization failed. Check your Integration Token.";
-  }
-  if (resolved.code === "NOTION_FORBIDDEN") {
-    return "Notion access denied. Share the page/block with your integration.";
-  }
-  if (resolved.code === "NOTION_NOT_FOUND") {
-    return "Notion block or page not found. Check the URL and permissions.";
-  }
-  if (resolved.code === "NOTION_RATE_LIMIT") {
-    return "Notion API rate limit reached. Please retry in a moment.";
-  }
-  if (resolved.code === "WRITE_CONFLICT") {
-    return "Remote content changed while editing. Refresh and try again.";
-  }
-  if (resolved.code === "NETWORK") {
-    return "Network error while contacting Notion API.";
-  }
-  return resolved.message;
 }
 
 // src/embed/cache.ts
@@ -996,104 +1160,6 @@ function mapNode(node, sourcePageId) {
 }
 function toEmbedNodeTree(tree, sourcePageId) {
   return mapNode(tree, sourcePageId);
-}
-
-// src/nbe/ref.ts
-var NBE_PROPERTY_NAME = "NBE ID";
-var NBE_PROTOCOL_ACTION = "notion-block-embed";
-var NBE_OPEN_REF_ACTION = "open-ref";
-var NBE_ID_PART = /^[A-Za-z0-9_-]+$/;
-var SHORTLINK_HOST = "www.shortlink.studio";
-var SHORTLINK_SIMPLE_PREFIX = "/1/";
-function normalizeIdPart(raw, label) {
-  const value = raw.trim();
-  if (!value) {
-    throw new PluginError("INVALID_INPUT", `${label} is required.`);
-  }
-  if (!NBE_ID_PART.test(value)) {
-    throw new PluginError("INVALID_INPUT", `Invalid ${label}: ${raw}`);
-  }
-  return value;
-}
-function normalizeNbeRef(raw) {
-  const value = raw.trim();
-  const parts = value.split("::");
-  if (parts.length !== 2) {
-    throw new PluginError("INVALID_INPUT", "Invalid NBE reference. Expected <PageID>::<BlockID>.");
-  }
-  const pageNbeId = normalizeIdPart(parts[0], "Page ID");
-  const blockNbeId = normalizeIdPart(parts[1], "Block ID");
-  return {
-    ref: `${pageNbeId}::${blockNbeId}`,
-    pageNbeId,
-    blockNbeId
-  };
-}
-function normalizeNbeUrlCandidate(rawUrl) {
-  const original = rawUrl.trim();
-  if (/^obsidian:\/\//i.test(original)) {
-    return original;
-  }
-  let wrapper;
-  try {
-    wrapper = new URL(original);
-  } catch {
-    throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
-  }
-  if (!["http:", "https:"].includes(wrapper.protocol) || wrapper.hostname.toLowerCase() !== SHORTLINK_HOST) {
-    return original;
-  }
-  if (!wrapper.pathname.startsWith(SHORTLINK_SIMPLE_PREFIX) || wrapper.search || wrapper.hash) {
-    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
-  }
-  const encodedTarget = wrapper.pathname.slice(SHORTLINK_SIMPLE_PREFIX.length);
-  if (encodedTarget.includes("/")) {
-    throw new PluginError("INVALID_INPUT", "Unsupported Shortlink Studio NBE URL.");
-  }
-  if (!encodedTarget) {
-    throw new PluginError("INVALID_INPUT", "Missing Shortlink Studio target URL.");
-  }
-  try {
-    return decodeURIComponent(encodedTarget);
-  } catch {
-    throw new PluginError("INVALID_INPUT", "Invalid Shortlink Studio target encoding.");
-  }
-}
-function parseNbeProtocolUrl(rawUrl, options) {
-  const originalUrl = rawUrl.trim();
-  const normalizedUrl = normalizeNbeUrlCandidate(originalUrl);
-  let url;
-  try {
-    url = new URL(normalizedUrl);
-  } catch {
-    throw new PluginError("INVALID_INPUT", "Invalid Obsidian NBE URI.");
-  }
-  if (url.protocol !== "obsidian:") {
-    throw new PluginError("INVALID_INPUT", "NBE URI must use the obsidian:// scheme.");
-  }
-  if (url.hostname !== NBE_PROTOCOL_ACTION) {
-    throw new PluginError("INVALID_INPUT", `Unsupported Obsidian action: ${url.hostname}`);
-  }
-  const action = (url.searchParams.get("action") ?? "").trim();
-  if (!action) {
-    throw new PluginError("INVALID_INPUT", 'Missing "action" in NBE URI.');
-  }
-  if (options?.requireOpenRefAction && action !== NBE_OPEN_REF_ACTION) {
-    throw new PluginError("INVALID_INPUT", `Unsupported NBE action: ${action}`);
-  }
-  const nbeParam = (url.searchParams.get("nbe") ?? "").trim();
-  if (!nbeParam) {
-    throw new PluginError("INVALID_INPUT", 'Missing "nbe" in NBE URI.');
-  }
-  return {
-    originalUrl,
-    action,
-    vault: url.searchParams.get("vault")?.trim() || void 0,
-    ...normalizeNbeRef(nbeParam)
-  };
-}
-function searchTokenForNbeRef(ref) {
-  return `nbe=${normalizeNbeRef(ref).ref}`;
 }
 
 // src/notion/parser.ts
@@ -1683,13 +1749,13 @@ var NotionRepository = class {
     if (target.mode === "page_heading") {
       return this.hasWarmTreeKey(this.buildPageSectionKey(target.pageId, normalizeHeading(target.heading), includeChildren));
     }
-    const ref = `${target.pageNbeId}::${target.blockNbeId}`;
+    const ref = target.ref;
     const resolvedTarget = this.readTimed(this.nbeResolvedTargetCache, ref) ?? this.readPersistedResolvedTarget(ref);
     if (!resolvedTarget) return false;
     return this.hasWarmTreeKey(this.buildBlockTreeKey(resolvedTarget.blockId, includeChildren));
   }
   async getBlockTreeByNbeRef(pageNbeId, blockNbeId, includeChildren) {
-    const ref = `${pageNbeId}::${blockNbeId}`;
+    const ref = buildNbeRef(pageNbeId, blockNbeId).ref;
     const memoryTarget = this.readTimed(this.nbeResolvedTargetCache, ref);
     if (memoryTarget) {
       this.logger.debug(`nbe-target memory hit ${ref}`);
@@ -1889,7 +1955,7 @@ var NotionRepository = class {
     return { pageIndex, duplicateBlockNbeIds };
   }
   async resolveFromPageIndex(pageIndex, pageNbeId, blockNbeId, includeChildren) {
-    const ref = `${pageNbeId}::${blockNbeId}`;
+    const ref = buildNbeRef(pageNbeId, blockNbeId).ref;
     const blockId = pageIndex.blocks[blockNbeId];
     if (!blockId) {
       return null;
@@ -4841,6 +4907,8 @@ function createQuickInsertNotionEmbedCommand() {
 
 // src/nbe/registry.ts
 var import_obsidian8 = require("obsidian");
+var CANVAS_NODE_READY_RETRY_DELAYS_MS = [0, 50, 100, 200, 400];
+var CANVAS_ZOOM_RETRY_DELAY_MS = 50;
 var NbeReferenceRegistryService = class {
   constructor(app, logger, store) {
     this.app = app;
@@ -4853,7 +4921,7 @@ var NbeReferenceRegistryService = class {
     this.refsByPath = buildPathIndex(this.registry);
   }
   getEntry(ref) {
-    return this.registry[ref];
+    return this.registry[normalizeNbeRef(ref).ref];
   }
   getRegistry() {
     return structuredCloneRegistry(this.registry);
@@ -4947,22 +5015,37 @@ var NbeReferenceRegistryService = class {
     return true;
   }
   async openRef(ref) {
-    const entry = this.registry[ref];
+    const normalizedRef = normalizeNbeRef(ref).ref;
+    let entry = this.registry[normalizedRef];
     if (!entry || entry.locations.length === 0) {
-      await this.searchFallback(ref);
-      this.scheduleRebuild();
-      return "searched";
+      await this.rebuild();
+      entry = this.registry[normalizedRef];
+      if (!entry || entry.locations.length === 0) {
+        await this.searchFallback(normalizedRef);
+        this.scheduleRebuild();
+        return "searched";
+      }
     }
     const directLocation = resolveDirectLocation(entry);
     if (directLocation) {
-      const opened = directLocation.kind === "markdown" ? await this.openMarkdownLocation(directLocation) : await this.openCanvasLocation(directLocation);
+      const opened = await this.tryOpenDirectLocation(directLocation, normalizedRef);
       if (opened) {
         return "opened";
       }
     }
-    await this.searchFallback(ref);
+    await this.searchFallback(normalizedRef);
     this.scheduleRebuild();
     return "searched";
+  }
+  async tryOpenDirectLocation(location, ref) {
+    try {
+      return location.kind === "markdown" ? await this.openMarkdownLocation(location) : await this.openCanvasLocation(location);
+    } catch (error) {
+      this.logger.debug(
+        `open NBE direct location failed ref=${ref} error=${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
   }
   async performRebuild() {
     const nextRegistry = {};
@@ -5040,20 +5123,12 @@ var NbeReferenceRegistryService = class {
     if (!file) return false;
     const leaf = this.findLeafForFile(location.path, "markdown") ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(true);
     await leaf.openFile(file);
-    await this.app.workspace.revealLeaf(leaf);
-    this.app.workspace.setActiveLeaf(leaf, { focus: true });
-    const currentState = leaf.getViewState();
-    await leaf.setViewState({
-      ...currentState,
-      state: {
-        ...currentState.state ?? {},
-        mode: "source"
-      }
-    });
+    await this.safeRevealLeaf(leaf, `markdown path=${location.path}`);
+    this.safeSetActiveLeaf(leaf, `markdown path=${location.path}`);
+    await this.safeSetMarkdownSourceMode(leaf, location.path);
     const view = leaf.view instanceof import_obsidian8.MarkdownView ? leaf.view : this.app.workspace.getActiveViewOfType(import_obsidian8.MarkdownView);
     const editor = view ? view.editor : void 0;
-    editor?.setCursor?.({ line: location.lineStart + 1, ch: 0 });
-    editor?.focus?.();
+    this.safeFocusMarkdownEditor(editor, location);
     return true;
   }
   async openCanvasLocation(location) {
@@ -5061,42 +5136,144 @@ var NbeReferenceRegistryService = class {
     if (!file) return false;
     const leaf = this.findLeafForFile(location.path, "canvas") ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(true);
     await leaf.openFile(file);
-    await this.app.workspace.revealLeaf(leaf);
-    this.app.workspace.setActiveLeaf(leaf, { focus: true });
-    const view = leaf.view;
-    if (view?.getViewType?.() !== "canvas") return false;
-    const canvas = view.canvas;
-    const node = canvas?.nodes?.get(location.nodeId);
-    if (!canvas || !node) return false;
-    const selection = canvas.selection;
-    if (selection instanceof Set) {
-      selection.clear();
-      selection.add(node);
-    } else {
-      selection?.clear?.();
-      selection?.add?.(node);
-    }
-    canvas.updateSelection?.(true);
-    canvas.zoomToSelection?.();
+    await this.safeRevealLeaf(leaf, `canvas path=${location.path}`);
+    this.safeSetActiveLeaf(leaf, `canvas path=${location.path}`);
+    const resolved = await this.waitForCanvasNode(leaf, location);
+    if (!resolved) return false;
+    this.safeSelectCanvasNode(resolved.canvas, resolved.node, location);
+    await this.safeZoomCanvasSelection(resolved.canvas, location);
     return true;
+  }
+  async safeRevealLeaf(leaf, context) {
+    try {
+      await this.app.workspace.revealLeaf(leaf);
+    } catch (error) {
+      this.logger.debug(`reveal NBE leaf failed ${context} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  safeSetActiveLeaf(leaf, context) {
+    try {
+      this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    } catch (error) {
+      this.logger.debug(`activate NBE leaf failed ${context} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  async safeSetMarkdownSourceMode(leaf, path) {
+    try {
+      const currentState = leaf.getViewState();
+      await leaf.setViewState({
+        ...currentState,
+        state: {
+          ...currentState.state ?? {},
+          mode: "source"
+        }
+      });
+    } catch (error) {
+      this.logger.debug(`set markdown NBE source mode failed path=${path} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  safeFocusMarkdownEditor(editor, location) {
+    try {
+      editor?.setCursor?.({ line: location.lineStart + 1, ch: 0 });
+    } catch (error) {
+      this.logger.debug(`set markdown NBE cursor failed path=${location.path} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      editor?.focus?.();
+    } catch (error) {
+      this.logger.debug(`focus markdown NBE editor failed path=${location.path} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  async waitForCanvasNode(leaf, location) {
+    for (const delayMs of CANVAS_NODE_READY_RETRY_DELAYS_MS) {
+      if (delayMs > 0) {
+        await sleep(delayMs);
+      }
+      const view = this.resolveCanvasView(leaf);
+      const canvas = view?.canvas;
+      const node = canvas?.nodes?.get?.(location.nodeId);
+      if (canvas && node) {
+        return { canvas, node };
+      }
+    }
+    return null;
+  }
+  resolveCanvasView(leaf) {
+    const view = leaf.view;
+    if (view?.getViewType?.() !== "canvas") return null;
+    return view;
+  }
+  safeSelectCanvasNode(canvas, node, location) {
+    try {
+      const selection = canvas.selection;
+      if (selection instanceof Set) {
+        selection.clear();
+        selection.add(node);
+      } else {
+        selection?.clear?.();
+        selection?.add?.(node);
+      }
+    } catch (error) {
+      this.logger.debug(`select canvas NBE node failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      canvas.updateSelection?.(true);
+    } catch (error) {
+      this.logger.debug(`update canvas NBE selection failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  async safeZoomCanvasSelection(canvas, location) {
+    try {
+      canvas.zoomToSelection?.();
+      return;
+    } catch (error) {
+      this.logger.debug(`zoom canvas NBE selection failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+    await sleep(CANVAS_ZOOM_RETRY_DELAY_MS);
+    try {
+      canvas.zoomToSelection?.();
+    } catch (error) {
+      this.logger.debug(`retry zoom canvas NBE selection failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   async searchFallback(ref) {
     const query = searchTokenForNbeRef(ref);
     const appAny = this.app;
+    try {
+      appAny.commands?.executeCommandById?.("global-search:open");
+    } catch (error) {
+      this.logger.debug(`open global search command failed error=${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (await this.trySetGlobalSearchQuery(query)) {
+      return;
+    }
     const searchPlugin = appAny.internalPlugins?.getPluginById?.("global-search")?.instance;
     if (typeof searchPlugin?.openGlobalSearch === "function") {
-      searchPlugin.openGlobalSearch(query);
-      return;
-    }
-    appAny.commands?.executeCommandById?.("global-search:open");
-    const searchLeaf = this.app.workspace.getLeavesOfType("search")[0];
-    const searchView = searchLeaf?.view;
-    if (searchLeaf && typeof searchView?.setQuery === "function") {
-      await this.app.workspace.revealLeaf(searchLeaf);
-      searchView.setQuery(query);
-      return;
+      try {
+        searchPlugin.openGlobalSearch();
+      } catch (error) {
+        this.logger.debug(`open global search plugin failed error=${error instanceof Error ? error.message : String(error)}`);
+      }
+      if (await this.trySetGlobalSearchQuery(query)) {
+        return;
+      }
     }
     new import_obsidian8.Notice(`Search for ${query}`);
+  }
+  async trySetGlobalSearchQuery(query) {
+    const searchLeaf = this.app.workspace.getLeavesOfType("search")[0];
+    const searchView = searchLeaf?.view;
+    if (!searchLeaf || typeof searchView?.setQuery !== "function") {
+      return false;
+    }
+    try {
+      await this.app.workspace.revealLeaf(searchLeaf);
+      searchView.setQuery(query);
+      return true;
+    } catch (error) {
+      this.logger.debug(`set global search query failed error=${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
   }
   findLeafForFile(path, viewType) {
     let match = null;
@@ -5292,6 +5469,9 @@ function addPathRef(index, path, ref) {
   const refs = index.get(path) ?? /* @__PURE__ */ new Set();
   refs.add(ref);
   index.set(path, refs);
+}
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // src/notion-web/host.ts

@@ -15,6 +15,7 @@ import {
   NbeReferenceRegistryEntry,
   NbeReferenceRegistryMap,
 } from "./models";
+import { normalizeNbeRef } from "../nbe/ref";
 
 export interface ImageSizeMemoryEntry {
   blockId: string;
@@ -92,20 +93,37 @@ function normalizeNbeRegistry(raw: unknown): NbeReferenceRegistryMap {
 
   for (const [ref, value] of Object.entries(raw)) {
     if (!isRecord(value)) continue;
+    let parsedRef;
+    try {
+      parsedRef = normalizeNbeRef(ref);
+    } catch {
+      try {
+        parsedRef = typeof value.ref === "string" ? normalizeNbeRef(value.ref) : null;
+      } catch {
+        parsedRef = null;
+      }
+    }
+    if (!parsedRef) continue;
     const locations = Array.isArray(value.locations)
       ? value.locations.map(normalizeRegistryLocation).filter((item): item is NbeReferenceLocation => Boolean(item))
       : [];
     const lastSeenAt = typeof value.lastSeenAt === "number" ? value.lastSeenAt : Date.now();
     const primaryLocationKey = typeof value.primaryLocationKey === "string" ? value.primaryLocationKey : undefined;
+    const existing = registry[parsedRef.ref];
+    const mergedLocations = existing
+      ? [...existing.locations, ...locations].filter(
+          (location, index, all) => all.findIndex((item) => item.key === location.key) === index,
+        )
+      : locations;
     const entry: NbeReferenceRegistryEntry = {
-      ref,
-      locations,
+      ref: parsedRef.ref,
+      locations: mergedLocations,
       primaryLocationKey: primaryLocationKey && locations.some((item) => item.key === primaryLocationKey)
         ? primaryLocationKey
-        : undefined,
-      lastSeenAt,
+        : existing?.primaryLocationKey,
+      lastSeenAt: Math.max(lastSeenAt, existing?.lastSeenAt ?? 0),
     };
-    registry[ref] = entry;
+    registry[parsedRef.ref] = entry;
   }
 
   return registry;
@@ -140,13 +158,24 @@ function normalizeResolvedTarget(raw: unknown, ref: string): NbeResolvedTarget |
   ) {
     return null;
   }
+  let parsedRef;
+  try {
+    parsedRef = normalizeNbeRef(ref);
+  } catch {
+    try {
+      parsedRef = typeof raw.ref === "string" ? normalizeNbeRef(raw.ref) : null;
+    } catch {
+      parsedRef = null;
+    }
+  }
+  if (!parsedRef) return null;
 
   const resolvedAt = typeof raw.resolvedAt === "number" ? raw.resolvedAt : Date.now();
 
   return {
-    ref,
-    pageNbeId: raw.pageNbeId,
-    blockNbeId: raw.blockNbeId,
+    ref: parsedRef.ref,
+    pageNbeId: parsedRef.pageNbeId,
+    blockNbeId: parsedRef.blockNbeId,
     pageId: raw.pageId,
     blockId: raw.blockId,
     resolvedAt,
@@ -184,12 +213,18 @@ function normalizeNbeResolvedTargetCache(raw: unknown): NbeResolvedTargetCacheMa
   for (const [tokenFingerprint, namespace] of Object.entries(raw)) {
     if (!isRecord(namespace)) continue;
     const normalizedEntries = Object.entries(namespace)
-      .map(([ref, value]) => [ref, normalizeResolvedTarget(value, ref)] as const)
-      .filter((entry): entry is [string, NbeResolvedTarget] => Boolean(entry[1]))
-      .filter(([, target]) => target.resolvedAt + NBE_RESOLUTION_CACHE_TTL_MS > now)
-      .sort(([, left], [, right]) => right.resolvedAt - left.resolvedAt)
-      .slice(0, NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN);
-    const normalizedNamespace = Object.fromEntries(normalizedEntries);
+      .map(([ref, value]) => normalizeResolvedTarget(value, ref))
+      .filter((target): target is NbeResolvedTarget => Boolean(target))
+      .filter((target) => target.resolvedAt + NBE_RESOLUTION_CACHE_TTL_MS > now)
+      .sort((left, right) => right.resolvedAt - left.resolvedAt);
+    const normalizedNamespace: Record<string, NbeResolvedTarget> = {};
+    for (const target of normalizedEntries) {
+      if (normalizedNamespace[target.ref]) continue;
+      normalizedNamespace[target.ref] = target;
+      if (Object.keys(normalizedNamespace).length >= NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN) {
+        break;
+      }
+    }
     if (Object.keys(normalizedNamespace).length === 0) continue;
     namespaces[tokenFingerprint] = normalizedNamespace;
   }

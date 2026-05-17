@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# macOS system files
+.DS_Store
+
+# Plugin runtime data (contains sensitive tokens and user state)
+data.json
+
+# Test coverage
+coverage/
+
+# Logs
+*.log

@@ -6,6 +6,8 @@ export const NBE_PROTOCOL_ACTION = "notion-block-embed";
 export const NBE_OPEN_REF_ACTION = "open-ref";
 
 const NBE_ID_PART = /^[A-Za-z0-9_-]+$/;
+const NBE_REF_SEPARATOR = "_";
+const LEGACY_NBE_REF_SEPARATOR = "::";
 const SHORTLINK_HOST = "www.shortlink.studio";
 const SHORTLINK_SIMPLE_PREFIX = "/1/";
 
@@ -28,17 +30,51 @@ function normalizeIdPart(raw: string, label: string): string {
 
 export function normalizeNbeRef(raw: string): ParsedNbeRef {
   const value = raw.trim();
-  const parts = value.split("::");
-  if (parts.length !== 2) {
-    throw new PluginError("INVALID_INPUT", "Invalid NBE reference. Expected <PageID>::<BlockID>.");
-  }
-  const pageNbeId = normalizeIdPart(parts[0], "Page ID");
-  const blockNbeId = normalizeIdPart(parts[1], "Block ID");
+  const parts = splitNbeRef(value);
+  const pageNbeId = normalizeIdPart(parts.pageNbeId, "Page ID");
+  const blockNbeId = normalizeIdPart(parts.blockNbeId, "Block ID");
   return {
-    ref: `${pageNbeId}::${blockNbeId}`,
+    ref: buildCanonicalNbeRef(pageNbeId, blockNbeId),
     pageNbeId,
     blockNbeId,
   };
+}
+
+export function buildNbeRef(pageNbeId: string, blockNbeId: string): ParsedNbeRef {
+  const normalizedPageNbeId = normalizeIdPart(pageNbeId, "Page ID");
+  const normalizedBlockNbeId = normalizeIdPart(blockNbeId, "Block ID");
+  return {
+    ref: buildCanonicalNbeRef(normalizedPageNbeId, normalizedBlockNbeId),
+    pageNbeId: normalizedPageNbeId,
+    blockNbeId: normalizedBlockNbeId,
+  };
+}
+
+function splitNbeRef(value: string): { pageNbeId: string; blockNbeId: string } {
+  if (value.includes(LEGACY_NBE_REF_SEPARATOR)) {
+    const parts = value.split(LEGACY_NBE_REF_SEPARATOR);
+    if (parts.length !== 2) {
+      throwInvalidNbeRef();
+    }
+    return { pageNbeId: parts[0], blockNbeId: parts[1] };
+  }
+
+  const separatorIndex = value.lastIndexOf(NBE_REF_SEPARATOR);
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    throwInvalidNbeRef();
+  }
+  return {
+    pageNbeId: value.slice(0, separatorIndex),
+    blockNbeId: value.slice(separatorIndex + 1),
+  };
+}
+
+function throwInvalidNbeRef(): never {
+  throw new PluginError("INVALID_INPUT", "Invalid NBE reference. Expected <PageID>_<BlockID>.");
+}
+
+function buildCanonicalNbeRef(pageNbeId: string, blockNbeId: string): string {
+  return `${pageNbeId}${NBE_REF_SEPARATOR}${blockNbeId}`;
 }
 
 export function normalizeNbeUrlCandidate(rawUrl: string): string {
@@ -128,5 +164,5 @@ export function extractNbeRefFromProtocolUrl(rawUrl: string): ParsedNbeRef | nul
 }
 
 export function searchTokenForNbeRef(ref: string): string {
-  return `nbe=${normalizeNbeRef(ref).ref}`;
+  return normalizeNbeRef(ref).ref;
 }

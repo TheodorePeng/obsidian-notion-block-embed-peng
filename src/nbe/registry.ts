@@ -14,7 +14,7 @@ import {
 import { Logger } from "../core/logger";
 import { PersistedDataStore } from "../core/persisted-data-store";
 import { extractNbeRefsFromDocument } from "./source";
-import { searchTokenForNbeRef } from "./ref";
+import { normalizeNbeRef, searchTokenForNbeRef } from "./ref";
 
 interface CurrentNbeContext {
   ref: string;
@@ -26,6 +26,27 @@ interface ScannedReferenceLocation {
   ref: string;
   location: NbeReferenceLocation;
 }
+
+interface CanvasViewLike {
+  getViewType?: () => string;
+  file?: { path?: string };
+  canvas?: CanvasApiLike;
+}
+
+interface CanvasApiLike {
+  nodes?: { get?: (nodeId: string) => unknown };
+  selection?: { clear?: () => void; add?: (node: unknown) => void } | Set<unknown>;
+  updateSelection?: (notify?: boolean) => void;
+  zoomToSelection?: () => void;
+}
+
+interface ResolvedCanvasNode {
+  canvas: CanvasApiLike;
+  node: unknown;
+}
+
+const CANVAS_NODE_READY_RETRY_DELAYS_MS = [0, 50, 100, 200, 400];
+const CANVAS_ZOOM_RETRY_DELAY_MS = 50;
 
 export class NbeReferenceRegistryService {
   private registry: NbeReferenceRegistryMap;
@@ -44,7 +65,7 @@ export class NbeReferenceRegistryService {
   }
 
   getEntry(ref: string): NbeReferenceRegistryEntry | undefined {
-    return this.registry[ref];
+    return this.registry[normalizeNbeRef(ref).ref];
   }
 
   getRegistry(): NbeReferenceRegistryMap {
@@ -153,26 +174,42 @@ export class NbeReferenceRegistryService {
   }
 
   async openRef(ref: string): Promise<"opened" | "searched"> {
-    const entry = this.registry[ref];
+    const normalizedRef = normalizeNbeRef(ref).ref;
+    let entry = this.registry[normalizedRef];
     if (!entry || entry.locations.length === 0) {
-      await this.searchFallback(ref);
-      this.scheduleRebuild();
-      return "searched";
+      await this.rebuild();
+      entry = this.registry[normalizedRef];
+      if (!entry || entry.locations.length === 0) {
+        await this.searchFallback(normalizedRef);
+        this.scheduleRebuild();
+        return "searched";
+      }
     }
 
     const directLocation = resolveDirectLocation(entry);
     if (directLocation) {
-      const opened = directLocation.kind === "markdown"
-        ? await this.openMarkdownLocation(directLocation)
-        : await this.openCanvasLocation(directLocation);
+      const opened = await this.tryOpenDirectLocation(directLocation, normalizedRef);
       if (opened) {
         return "opened";
       }
     }
 
-    await this.searchFallback(ref);
+    await this.searchFallback(normalizedRef);
     this.scheduleRebuild();
     return "searched";
+  }
+
+  private async tryOpenDirectLocation(location: NbeReferenceLocation, ref: string): Promise<boolean> {
+    try {
+      return location.kind === "markdown"
+        ? await this.openMarkdownLocation(location)
+        : await this.openCanvasLocation(location);
+    } catch (error) {
+      this.logger.debug(
+        `open NBE direct location failed ref=${ref} error=${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
   }
 
   private async performRebuild(): Promise<void> {
@@ -273,22 +310,14 @@ export class NbeReferenceRegistryService {
 
     const leaf = this.findLeafForFile(location.path, "markdown") ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(true);
     await leaf.openFile(file);
-    await this.app.workspace.revealLeaf(leaf);
-    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    await this.safeRevealLeaf(leaf, `markdown path=${location.path}`);
+    this.safeSetActiveLeaf(leaf, `markdown path=${location.path}`);
 
-    const currentState = leaf.getViewState();
-    await leaf.setViewState({
-      ...currentState,
-      state: {
-        ...(currentState.state ?? {}),
-        mode: 'source',
-      },
-    });
+    await this.safeSetMarkdownSourceMode(leaf, location.path);
 
     const view = leaf.view instanceof MarkdownView ? leaf.view : this.app.workspace.getActiveViewOfType(MarkdownView);
     const editor = view ? (view as MarkdownView & { editor?: { setCursor?: (cursor: { line: number; ch: number }) => void; focus?: () => void } }).editor : undefined;
-    editor?.setCursor?.({ line: location.lineStart + 1, ch: 0 });
-    editor?.focus?.();
+    this.safeFocusMarkdownEditor(editor, location);
     return true;
   }
 
@@ -298,60 +327,170 @@ export class NbeReferenceRegistryService {
 
     const leaf = this.findLeafForFile(location.path, "canvas") ?? this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(true);
     await leaf.openFile(file);
-    await this.app.workspace.revealLeaf(leaf);
-    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    await this.safeRevealLeaf(leaf, `canvas path=${location.path}`);
+    this.safeSetActiveLeaf(leaf, `canvas path=${location.path}`);
 
-    const view = leaf.view as {
-      getViewType?: () => string;
-      canvas?: {
-        nodes?: Map<string, unknown>;
-        selection?: { clear?: () => void; add?: (node: unknown) => void } | Set<unknown>;
-        updateSelection?: (notify?: boolean) => void;
-        zoomToSelection?: () => void;
-      };
-    };
-    if (view?.getViewType?.() !== "canvas") return false;
+    const resolved = await this.waitForCanvasNode(leaf, location);
+    if (!resolved) return false;
 
-    const canvas = view.canvas;
-    const node = canvas?.nodes?.get(location.nodeId);
-    if (!canvas || !node) return false;
-
-    const selection = canvas.selection as { clear?: () => void; add?: (node: unknown) => void } | Set<unknown> | undefined;
-    if (selection instanceof Set) {
-      selection.clear();
-      selection.add(node);
-    } else {
-      selection?.clear?.();
-      selection?.add?.(node);
-    }
-    canvas.updateSelection?.(true);
-    canvas.zoomToSelection?.();
+    this.safeSelectCanvasNode(resolved.canvas, resolved.node, location);
+    await this.safeZoomCanvasSelection(resolved.canvas, location);
     return true;
+  }
+
+  private async safeRevealLeaf(leaf: ReturnType<App['workspace']['getLeaf']>, context: string): Promise<void> {
+    try {
+      await this.app.workspace.revealLeaf(leaf);
+    } catch (error) {
+      this.logger.debug(`reveal NBE leaf failed ${context} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private safeSetActiveLeaf(leaf: ReturnType<App['workspace']['getLeaf']>, context: string): void {
+    try {
+      this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    } catch (error) {
+      this.logger.debug(`activate NBE leaf failed ${context} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async safeSetMarkdownSourceMode(leaf: ReturnType<App['workspace']['getLeaf']>, path: string): Promise<void> {
+    try {
+      const currentState = leaf.getViewState();
+      await leaf.setViewState({
+        ...currentState,
+        state: {
+          ...(currentState.state ?? {}),
+          mode: 'source',
+        },
+      });
+    } catch (error) {
+      this.logger.debug(`set markdown NBE source mode failed path=${path} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private safeFocusMarkdownEditor(
+    editor: { setCursor?: (cursor: { line: number; ch: number }) => void; focus?: () => void } | undefined,
+    location: NbeMarkdownReferenceLocation,
+  ): void {
+    try {
+      editor?.setCursor?.({ line: location.lineStart + 1, ch: 0 });
+    } catch (error) {
+      this.logger.debug(`set markdown NBE cursor failed path=${location.path} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      editor?.focus?.();
+    } catch (error) {
+      this.logger.debug(`focus markdown NBE editor failed path=${location.path} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async waitForCanvasNode(
+    leaf: ReturnType<App['workspace']['getLeaf']>,
+    location: NbeCanvasReferenceLocation,
+  ): Promise<ResolvedCanvasNode | null> {
+    for (const delayMs of CANVAS_NODE_READY_RETRY_DELAYS_MS) {
+      if (delayMs > 0) {
+        await sleep(delayMs);
+      }
+      const view = this.resolveCanvasView(leaf);
+      const canvas = view?.canvas;
+      const node = canvas?.nodes?.get?.(location.nodeId);
+      if (canvas && node) {
+        return { canvas, node };
+      }
+    }
+    return null;
+  }
+
+  private resolveCanvasView(leaf: ReturnType<App['workspace']['getLeaf']>): CanvasViewLike | null {
+    const view = leaf.view as CanvasViewLike | undefined;
+    if (view?.getViewType?.() !== 'canvas') return null;
+    return view;
+  }
+
+  private safeSelectCanvasNode(canvas: CanvasApiLike, node: unknown, location: NbeCanvasReferenceLocation): void {
+    try {
+      const selection = canvas.selection;
+      if (selection instanceof Set) {
+        selection.clear();
+        selection.add(node);
+      } else {
+        selection?.clear?.();
+        selection?.add?.(node);
+      }
+    } catch (error) {
+      this.logger.debug(`select canvas NBE node failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      canvas.updateSelection?.(true);
+    } catch (error) {
+      this.logger.debug(`update canvas NBE selection failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async safeZoomCanvasSelection(canvas: CanvasApiLike, location: NbeCanvasReferenceLocation): Promise<void> {
+    try {
+      canvas.zoomToSelection?.();
+      return;
+    } catch (error) {
+      this.logger.debug(`zoom canvas NBE selection failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    await sleep(CANVAS_ZOOM_RETRY_DELAY_MS);
+    try {
+      canvas.zoomToSelection?.();
+    } catch (error) {
+      this.logger.debug(`retry zoom canvas NBE selection failed path=${location.path} node=${location.nodeId} error=${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async searchFallback(ref: string): Promise<void> {
     const query = searchTokenForNbeRef(ref);
     const appAny = this.app as App & {
-      internalPlugins?: { getPluginById?: (id: string) => { instance?: { openGlobalSearch?: (query?: string) => void } } | null };
+      internalPlugins?: { getPluginById?: (id: string) => { instance?: { openGlobalSearch?: () => void } } | null };
       commands?: { executeCommandById?: (id: string) => boolean };
     };
 
-    const searchPlugin = appAny.internalPlugins?.getPluginById?.('global-search')?.instance;
-    if (typeof searchPlugin?.openGlobalSearch === 'function') {
-      searchPlugin.openGlobalSearch(query);
+    try {
+      appAny.commands?.executeCommandById?.('global-search:open');
+    } catch (error) {
+      this.logger.debug(`open global search command failed error=${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (await this.trySetGlobalSearchQuery(query)) {
       return;
     }
 
-    appAny.commands?.executeCommandById?.('global-search:open');
-    const searchLeaf = this.app.workspace.getLeavesOfType('search')[0];
-    const searchView = searchLeaf?.view as { setQuery?: (query: string) => void } | undefined;
-    if (searchLeaf && typeof searchView?.setQuery === 'function') {
-      await this.app.workspace.revealLeaf(searchLeaf);
-      searchView.setQuery(query);
-      return;
+    const searchPlugin = appAny.internalPlugins?.getPluginById?.('global-search')?.instance;
+    if (typeof searchPlugin?.openGlobalSearch === 'function') {
+      try {
+        searchPlugin.openGlobalSearch();
+      } catch (error) {
+        this.logger.debug(`open global search plugin failed error=${error instanceof Error ? error.message : String(error)}`);
+      }
+      if (await this.trySetGlobalSearchQuery(query)) {
+        return;
+      }
     }
 
     new Notice(`Search for ${query}`);
+  }
+
+  private async trySetGlobalSearchQuery(query: string): Promise<boolean> {
+    const searchLeaf = this.app.workspace.getLeavesOfType('search')[0];
+    const searchView = searchLeaf?.view as { setQuery?: (query: string) => void } | undefined;
+    if (!searchLeaf || typeof searchView?.setQuery !== 'function') {
+      return false;
+    }
+    try {
+      await this.app.workspace.revealLeaf(searchLeaf);
+      searchView.setQuery(query);
+      return true;
+    } catch (error) {
+      this.logger.debug(`set global search query failed error=${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
   }
 
   private findLeafForFile(path: string, viewType: 'markdown' | 'canvas') {
@@ -566,4 +705,8 @@ function addPathRef(index: Map<string, Set<string>>, path: string, ref: string):
   const refs = index.get(path) ?? new Set<string>();
   refs.add(ref);
   index.set(path, refs);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

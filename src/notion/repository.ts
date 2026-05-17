@@ -15,7 +15,7 @@ import {
 } from "../core/models";
 import { AsyncTtlCache } from "../embed/cache";
 import { mapWithConcurrency } from "../embed/concurrency";
-import { NBE_PROPERTY_NAME, parseNbeProtocolUrl } from "../nbe/ref";
+import { buildNbeRef, NBE_PROPERTY_NAME, parseNbeProtocolUrl } from "../nbe/ref";
 import { NotionChildrenHydrator, NotionReadClient } from "./children-hydration";
 import { extractHeadingSection, normalizeHeading } from "./heading-section";
 
@@ -66,7 +66,7 @@ export class NotionRepository {
       return this.hasWarmTreeKey(this.buildPageSectionKey(target.pageId, normalizeHeading(target.heading), includeChildren));
     }
 
-    const ref = `${target.pageNbeId}::${target.blockNbeId}`;
+    const ref = target.ref;
     const resolvedTarget = this.readTimed(this.nbeResolvedTargetCache, ref) ?? this.readPersistedResolvedTarget(ref);
     if (!resolvedTarget) return false;
     return this.hasWarmTreeKey(this.buildBlockTreeKey(resolvedTarget.blockId, includeChildren));
@@ -77,7 +77,7 @@ export class NotionRepository {
     blockNbeId: string,
     includeChildren: boolean,
   ): Promise<{ pageId: string; blockId: string; tree: NotionApiBlockTree }> {
-    const ref = `${pageNbeId}::${blockNbeId}`;
+    const ref = buildNbeRef(pageNbeId, blockNbeId).ref;
     const memoryTarget = this.readTimed(this.nbeResolvedTargetCache, ref);
     if (memoryTarget) {
       this.logger.debug(`nbe-target memory hit ${ref}`);
@@ -316,7 +316,7 @@ export class NotionRepository {
     blockNbeId: string,
     includeChildren: boolean,
   ): Promise<{ pageId: string; blockId: string; tree: NotionApiBlockTree } | null> {
-    const ref = `${pageNbeId}::${blockNbeId}`;
+    const ref = buildNbeRef(pageNbeId, blockNbeId).ref;
     const blockId = pageIndex.blocks[blockNbeId];
     if (!blockId) {
       return null;

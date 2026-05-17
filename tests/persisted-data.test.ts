@@ -43,6 +43,43 @@ describe("coercePersistedPluginData", () => {
     const data = coercePersistedPluginData({
       settings: {},
       nbeRegistry: {
+        "p20260328153045-k7_b7k2m9": {
+          ref: "p20260328153045-k7_b7k2m9",
+          primaryLocationKey: "md:Note.md:4:6",
+          lastSeenAt: 123456,
+          locations: [
+            {
+              kind: "markdown",
+              key: "md:Note.md:4:6",
+              path: "Note.md",
+              lineStart: 4,
+              lineEnd: 6,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(data.nbeRegistry["p20260328153045-k7_b7k2m9"]).toEqual({
+      ref: "p20260328153045-k7_b7k2m9",
+      primaryLocationKey: "md:Note.md:4:6",
+      lastSeenAt: 123456,
+      locations: [
+        {
+          kind: "markdown",
+          key: "md:Note.md:4:6",
+          path: "Note.md",
+          lineStart: 4,
+          lineEnd: 6,
+        },
+      ],
+    });
+  });
+
+  it("normalizes legacy double-colon NBE registry entries on load", () => {
+    const data = coercePersistedPluginData({
+      settings: {},
+      nbeRegistry: {
         "p20260328153045-k7::b7k2m9": {
           ref: "p20260328153045-k7::b7k2m9",
           primaryLocationKey: "md:Note.md:4:6",
@@ -60,20 +97,8 @@ describe("coercePersistedPluginData", () => {
       },
     });
 
-    expect(data.nbeRegistry["p20260328153045-k7::b7k2m9"]).toEqual({
-      ref: "p20260328153045-k7::b7k2m9",
-      primaryLocationKey: "md:Note.md:4:6",
-      lastSeenAt: 123456,
-      locations: [
-        {
-          kind: "markdown",
-          key: "md:Note.md:4:6",
-          path: "Note.md",
-          lineStart: 4,
-          lineEnd: 6,
-        },
-      ],
-    });
+    expect(data.nbeRegistry["p20260328153045-k7_b7k2m9"]?.ref).toBe("p20260328153045-k7_b7k2m9");
+    expect(data.nbeRegistry["p20260328153045-k7::b7k2m9"]).toBeUndefined();
   });
 
   it("preserves NBE resolution cache entries from persisted object", () => {
@@ -110,6 +135,34 @@ describe("coercePersistedPluginData", () => {
       settings: {},
       nbeResolvedTargetCache: {
         tkn123: {
+          "p20260328153045-k7_b7k2m9": {
+            ref: "p20260328153045-k7_b7k2m9",
+            pageNbeId: "p20260328153045-k7",
+            blockNbeId: "b7k2m9",
+            pageId: "page-1",
+            blockId: "block-1",
+            resolvedAt: now,
+          },
+        },
+      },
+    });
+
+    expect(data.nbeResolvedTargetCache.tkn123?.["p20260328153045-k7_b7k2m9"]).toEqual({
+      ref: "p20260328153045-k7_b7k2m9",
+      pageNbeId: "p20260328153045-k7",
+      blockNbeId: "b7k2m9",
+      pageId: "page-1",
+      blockId: "block-1",
+      resolvedAt: now,
+    });
+  });
+
+  it("normalizes legacy double-colon NBE resolved target cache entries on load", () => {
+    const now = Date.now();
+    const data = coercePersistedPluginData({
+      settings: {},
+      nbeResolvedTargetCache: {
+        tkn123: {
           "p20260328153045-k7::b7k2m9": {
             ref: "p20260328153045-k7::b7k2m9",
             pageNbeId: "p20260328153045-k7",
@@ -122,14 +175,10 @@ describe("coercePersistedPluginData", () => {
       },
     });
 
-    expect(data.nbeResolvedTargetCache.tkn123?.["p20260328153045-k7::b7k2m9"]).toEqual({
-      ref: "p20260328153045-k7::b7k2m9",
-      pageNbeId: "p20260328153045-k7",
-      blockNbeId: "b7k2m9",
-      pageId: "page-1",
-      blockId: "block-1",
-      resolvedAt: now,
-    });
+    expect(data.nbeResolvedTargetCache.tkn123?.["p20260328153045-k7_b7k2m9"]?.ref).toBe(
+      "p20260328153045-k7_b7k2m9",
+    );
+    expect(data.nbeResolvedTargetCache.tkn123?.["p20260328153045-k7::b7k2m9"]).toBeUndefined();
   });
 
   it("prunes expired page indexes and caps each token namespace", () => {
@@ -183,9 +232,9 @@ describe("coercePersistedPluginData", () => {
       const now = Date.now();
       const namespace = Object.fromEntries(
         Array.from({ length: NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN + 2 }, (_, index) => [
-          `page::block-${index}`,
+          `page_block-${index}`,
           {
-            ref: `page::block-${index}`,
+            ref: `page_block-${index}`,
             pageNbeId: "page",
             blockNbeId: `block-${index}`,
             pageId: "notion-page",
@@ -214,8 +263,8 @@ describe("coercePersistedPluginData", () => {
 
       const keys = Object.keys(data.nbeResolvedTargetCache.tkn123 ?? {});
       expect(keys).toHaveLength(NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN);
-      expect(keys).toContain("page::block-0");
-      expect(keys).not.toContain(`page::block-${NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN}`);
+      expect(keys).toContain("page_block-0");
+      expect(keys).not.toContain(`page_block-${NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN}`);
       expect(keys).not.toContain("expired");
     } finally {
       vi.useRealTimers();

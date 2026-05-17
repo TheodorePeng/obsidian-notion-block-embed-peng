@@ -52,7 +52,7 @@ describe('source-loader shared loads', () => {
 
   it('loads Shortlink Studio NBE sources through NBE ref resolution', async () => {
     const source = `https://www.shortlink.studio/1/${encodeURIComponent(
-      'obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9',
+      'obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9',
     )}`;
     const repository = {
       getBlockTree: vi.fn(),

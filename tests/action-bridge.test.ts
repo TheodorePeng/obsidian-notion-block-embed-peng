@@ -25,10 +25,10 @@ describe("createRenderOptions", () => {
             ? {
                 mode,
                 originalUrl:
-                  "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9",
+                  "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9",
                 action: "open-ref",
                 vault: "My Vault",
-                ref: "p20260328153045-k7::b7k2m9",
+                ref: "p20260328153045-k7_b7k2m9",
                 pageNbeId: "p20260328153045-k7",
                 blockNbeId: "b7k2m9",
               }

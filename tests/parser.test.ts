@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildCanonicalNotionBlockUrl, parseNotionBlockUrl, parseNotionTargetFromSource } from "../src/notion/parser";
 
 const SHORTLINK_NBE_URL =
+  "https://www.shortlink.studio/1/obsidian%3A%2F%2Fnotion-block-embed%3Fvault%3DMy%2520Obsidian%26action%3Dopen-ref%26nbe%3Dp20260328161030-k7_b15oxob";
+
+const LEGACY_SHORTLINK_NBE_URL =
   "https://www.shortlink.studio/1/obsidian%3A%2F%2Fnotion-block-embed%3Fvault%3DMy%2520Obsidian%26action%3Dopen-ref%26nbe%3Dp20260328161030-k7%3A%3Ab15oxob";
 
 describe("parseNotionBlockUrl", () => {
@@ -60,14 +63,14 @@ describe("parseNotionTargetFromSource", () => {
 
   it("parses single-line NBE URI mode", () => {
     const target = parseNotionTargetFromSource(
-      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9",
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9",
     );
     expect(target.mode).toBe("nbe_uri");
     if (target.mode === "nbe_uri") {
       expect(target.vault).toBe("My Vault");
       expect(target.pageNbeId).toBe("p20260328153045-k7");
       expect(target.blockNbeId).toBe("b7k2m9");
-      expect(target.ref).toBe("p20260328153045-k7::b7k2m9");
+      expect(target.ref).toBe("p20260328153045-k7_b7k2m9");
     }
   });
 
@@ -80,7 +83,26 @@ describe("parseNotionTargetFromSource", () => {
       expect(target.vault).toBe("My Obsidian");
       expect(target.pageNbeId).toBe("p20260328161030-k7");
       expect(target.blockNbeId).toBe("b15oxob");
-      expect(target.ref).toBe("p20260328161030-k7::b15oxob");
+      expect(target.ref).toBe("p20260328161030-k7_b15oxob");
+    }
+  });
+
+  it("normalizes legacy double-colon NBE refs to underscore refs", () => {
+    const target = parseNotionTargetFromSource(
+      "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9",
+    );
+    expect(target.mode).toBe("nbe_uri");
+    if (target.mode === "nbe_uri") {
+      expect(target.ref).toBe("p20260328153045-k7_b7k2m9");
+    }
+  });
+
+  it("normalizes legacy Shortlink Studio double-colon NBE refs to underscore refs", () => {
+    const target = parseNotionTargetFromSource(LEGACY_SHORTLINK_NBE_URL);
+    expect(target.mode).toBe("nbe_uri");
+    if (target.mode === "nbe_uri") {
+      expect(target.originalUrl).toBe(LEGACY_SHORTLINK_NBE_URL);
+      expect(target.ref).toBe("p20260328161030-k7_b15oxob");
     }
   });
 
@@ -113,7 +135,7 @@ heading: 一、GitHub网站基础介绍
   it("rejects NBE URI when action is not open-ref", () => {
     expect(() =>
       parseNotionTargetFromSource(
-        "obsidian://notion-block-embed?vault=My%20Vault&action=search&nbe=p20260328153045-k7::b7k2m9",
+        "obsidian://notion-block-embed?vault=My%20Vault&action=search&nbe=p20260328153045-k7_b7k2m9",
       ),
     ).toThrow("Unsupported NBE action");
   });

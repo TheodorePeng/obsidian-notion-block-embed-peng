@@ -13,6 +13,7 @@ import {
   NbeResolutionCacheMap,
   NbeResolvedPageIndex,
 } from './models';
+import { normalizeNbeRef } from '../nbe/ref';
 
 interface DebouncedWaiter {
   resolve: () => void;
@@ -89,8 +90,9 @@ export class PersistedDataStore {
   }
 
   getNbeResolvedTarget(tokenFingerprint: string, ref: string): NbeResolvedTarget | null {
-    return this.data.nbeResolvedTargetCache[tokenFingerprint]?.[ref]
-      ? cloneResolvedTarget(this.data.nbeResolvedTargetCache[tokenFingerprint][ref])
+    const normalizedRef = normalizeNbeRef(ref).ref;
+    return this.data.nbeResolvedTargetCache[tokenFingerprint]?.[normalizedRef]
+      ? cloneResolvedTarget(this.data.nbeResolvedTargetCache[tokenFingerprint][normalizedRef])
       : null;
   }
 
@@ -157,7 +159,8 @@ export class PersistedDataStore {
   }
 
   deleteNbeResolvedTarget(tokenFingerprint: string, ref: string): Promise<void> {
-    if (!this.data.nbeResolvedTargetCache[tokenFingerprint]?.[ref]) {
+    const normalizedRef = normalizeNbeRef(ref).ref;
+    if (!this.data.nbeResolvedTargetCache[tokenFingerprint]?.[normalizedRef]) {
       return Promise.resolve();
     }
 
@@ -165,7 +168,7 @@ export class PersistedDataStore {
     const namespace = {
       ...(nextCache[tokenFingerprint] ?? {}),
     };
-    delete namespace[ref];
+    delete namespace[normalizedRef];
     if (Object.keys(namespace).length === 0) {
       delete nextCache[tokenFingerprint];
     } else {

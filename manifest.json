@@ -1,7 +1,7 @@
 {
   "id": "notion-block-embed",
   "name": "Notion Block Embed",
-  "version": "0.2.49",
+  "version": "0.2.50",
   "minAppVersion": "1.5.0",
   "description": "Embed Notion blocks into Obsidian notes and canvas with optional limited writeback.",
   "author": "Peng",

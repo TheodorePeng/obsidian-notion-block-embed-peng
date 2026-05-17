@@ -57,7 +57,7 @@ describe("NotionEmbedProcessor", () => {
     });
 
     const source =
-      "obsidian://notion-block-embed?vault=Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const ctx = {
       sourcePath: "demo.canvas",
       addChild: vi.fn(),
@@ -178,7 +178,7 @@ describe("NotionEmbedProcessor", () => {
     });
 
     const source =
-      "obsidian://notion-block-embed?vault=Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+      "obsidian://notion-block-embed?vault=Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const ctx = {
       sourcePath: "note.md",
       addChild: vi.fn(),

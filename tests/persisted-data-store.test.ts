@@ -92,7 +92,7 @@ describe('PersistedDataStore', () => {
     const now = Date.now();
 
     await store.setNbeResolvedTarget('tkn123', {
-      ref: 'p20260328153045-k7::b7k2m9',
+      ref: 'p20260328153045-k7_b7k2m9',
       pageNbeId: 'p20260328153045-k7',
       blockNbeId: 'b7k2m9',
       pageId: 'page-1',
@@ -100,8 +100,16 @@ describe('PersistedDataStore', () => {
       resolvedAt: now,
     });
 
+    expect(store.getNbeResolvedTarget('tkn123', 'p20260328153045-k7_b7k2m9')).toEqual({
+      ref: 'p20260328153045-k7_b7k2m9',
+      pageNbeId: 'p20260328153045-k7',
+      blockNbeId: 'b7k2m9',
+      pageId: 'page-1',
+      blockId: 'block-1',
+      resolvedAt: now,
+    });
     expect(store.getNbeResolvedTarget('tkn123', 'p20260328153045-k7::b7k2m9')).toEqual({
-      ref: 'p20260328153045-k7::b7k2m9',
+      ref: 'p20260328153045-k7_b7k2m9',
       pageNbeId: 'p20260328153045-k7',
       blockNbeId: 'b7k2m9',
       pageId: 'page-1',
@@ -110,7 +118,7 @@ describe('PersistedDataStore', () => {
     });
 
     await store.deleteNbeResolvedTarget('tkn123', 'p20260328153045-k7::b7k2m9');
-    expect(store.getNbeResolvedTarget('tkn123', 'p20260328153045-k7::b7k2m9')).toBeNull();
+    expect(store.getNbeResolvedTarget('tkn123', 'p20260328153045-k7_b7k2m9')).toBeNull();
   });
 
   it('prunes stale page indexes and caps namespace size on write', async () => {
@@ -157,9 +165,9 @@ describe('PersistedDataStore', () => {
       const now = Date.now();
       const seededTargets = Object.fromEntries(
         Array.from({ length: NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN + 2 }, (_, index) => [
-          `page::block-${index}`,
+          `page_block-${index}`,
           {
-            ref: `page::block-${index}`,
+            ref: `page_block-${index}`,
             pageNbeId: 'page',
             blockNbeId: `block-${index}`,
             pageId: `notion-page-${index}`,
@@ -186,7 +194,7 @@ describe('PersistedDataStore', () => {
       );
 
       await store.setNbeResolvedTarget('tkn123', {
-        ref: 'page::block-new',
+        ref: 'page_block-new',
         pageNbeId: 'page',
         blockNbeId: 'block-new',
         pageId: 'notion-page-new',
@@ -196,9 +204,9 @@ describe('PersistedDataStore', () => {
 
       const namespace = store.getData().nbeResolvedTargetCache.tkn123 ?? {};
       expect(Object.keys(namespace)).toHaveLength(NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN);
-      expect(namespace['page::block-new']).toBeTruthy();
-      expect(namespace['page::block-0']).toBeTruthy();
-      expect(namespace[`page::block-${NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN + 1}`]).toBeUndefined();
+      expect(namespace['page_block-new']).toBeTruthy();
+      expect(namespace['page_block-0']).toBeTruthy();
+      expect(namespace[`page_block-${NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN + 1}`]).toBeUndefined();
       expect(namespace.expired).toBeUndefined();
     } finally {
       vi.useRealTimers();

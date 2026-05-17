@@ -417,7 +417,7 @@ describe("NotionRepository", () => {
   });
 
   it("resolves a block tree by NBE page ID and block ID across databases", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${ref}`;
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -437,8 +437,8 @@ describe("NotionRepository", () => {
   });
 
   it("reuses a rebuilt page index for later refs on the same page", async () => {
-    const refA = "p20260328153045-k7::b7k2m9";
-    const refB = "p20260328153045-k7::b8x9z1";
+    const refA = "p20260328153045-k7_b7k2m9";
+    const refB = "p20260328153045-k7_b8x9z1";
     const hrefA = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${refA}`;
     const hrefB = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${refB}`;
     const client = {
@@ -464,7 +464,7 @@ describe("NotionRepository", () => {
   });
 
   it("rebuilds NBE page indexes through lightweight child scans instead of hydrating the page tree root", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${ref}`;
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -489,7 +489,7 @@ describe("NotionRepository", () => {
   });
 
   it("prewarms page indexes once and reuses them for later NBE resolution", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${ref}`;
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -510,7 +510,7 @@ describe("NotionRepository", () => {
   });
 
   it("resolves an NBE ref from plain_text when the page stores a naked URI instead of a Notion link", async () => {
-    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
       queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
@@ -525,7 +525,7 @@ describe("NotionRepository", () => {
   });
 
   it("resolves an NBE ref from markdown-style plain_text links", async () => {
-    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const markdownText = `[🔗OB](${href})`;
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -543,7 +543,7 @@ describe("NotionRepository", () => {
   });
 
   it("resolves an NBE ref from Shortlink Studio rich-text links", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = makeShortlinkNbeUrl(ref);
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -559,7 +559,7 @@ describe("NotionRepository", () => {
   });
 
   it("resolves an NBE ref from markdown-style Shortlink Studio plain_text links", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = makeShortlinkNbeUrl(ref);
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -577,7 +577,7 @@ describe("NotionRepository", () => {
   });
 
   it("deduplicates refs within a single block when both link metadata and plain_text point to the same NBE ref", async () => {
-    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
       queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
@@ -639,8 +639,8 @@ describe("NotionRepository", () => {
       },
       {
         tkn: {
-          "p20260328153045-k7::b7k2m9": {
-            ref: "p20260328153045-k7::b7k2m9",
+          "p20260328153045-k7_b7k2m9": {
+            ref: "p20260328153045-k7_b7k2m9",
             pageNbeId: "p20260328153045-k7",
             blockNbeId: "b7k2m9",
             pageId: "page-1",
@@ -690,7 +690,7 @@ describe("NotionRepository", () => {
 
     expect(resolved.blockId).toBe("block-1");
     expect(resolutionStore.setResolvedTarget).toHaveBeenCalledWith("tkn", {
-      ref: "p20260328153045-k7::b7k2m9",
+      ref: "p20260328153045-k7_b7k2m9",
       pageNbeId: "p20260328153045-k7",
       blockNbeId: "b7k2m9",
       pageId: "page-1",
@@ -700,7 +700,7 @@ describe("NotionRepository", () => {
   });
 
   it("invalidates a stale resolved target and falls back to NBE resolution once", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${ref}`;
     const resolutionStore = createResolutionStore(
       {
@@ -798,7 +798,7 @@ describe("NotionRepository", () => {
   });
 
   it("ignores plain_text obsidian links whose action is not open-ref", async () => {
-    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-page&nbe=p20260328153045-k7::b7k2m9";
+    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-page&nbe=p20260328153045-k7_b7k2m9";
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
       queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
@@ -813,7 +813,7 @@ describe("NotionRepository", () => {
   });
 
   it("ignores Shortlink Studio links whose decoded NBE action is not open-ref", async () => {
-    const href = makeShortlinkNbeUrl("p20260328153045-k7::b7k2m9", "open-page");
+    const href = makeShortlinkNbeUrl("p20260328153045-k7_b7k2m9", "open-page");
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
       queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
@@ -828,7 +828,7 @@ describe("NotionRepository", () => {
   });
 
   it("throws when multiple blocks on the same page match the same NBE ref", async () => {
-    const ref = "p20260328153045-k7::b7k2m9";
+    const ref = "p20260328153045-k7_b7k2m9";
     const href = `obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=${ref}`;
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
@@ -846,7 +846,7 @@ describe("NotionRepository", () => {
   });
 
   it("still throws duplicate errors when multiple blocks declare the same ref via plain_text fallback", async () => {
-    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9";
+    const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
       queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
@@ -865,7 +865,7 @@ describe("NotionRepository", () => {
   });
 
   it("still throws duplicate errors when multiple blocks declare the same ref via Shortlink Studio links", async () => {
-    const href = makeShortlinkNbeUrl("p20260328153045-k7::b7k2m9");
+    const href = makeShortlinkNbeUrl("p20260328153045-k7_b7k2m9");
     const client = {
       searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
       queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),

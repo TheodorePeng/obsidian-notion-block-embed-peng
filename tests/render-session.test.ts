@@ -507,7 +507,7 @@ describe('createRenderSession', () => {
   it('keeps the footer visible for invalid single-line sources inside Canvas so users can repair them in place', async () => {
     const invalidSource = 'not-a-valid-embed-url';
     const validSource =
-      'obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7::b7k2m9';
+      'obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9';
     const canvasFile = { path: 'Board.canvas', extension: 'canvas' };
     const canvasData = {
       nodes: [
