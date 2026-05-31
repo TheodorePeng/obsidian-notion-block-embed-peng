@@ -1185,7 +1185,8 @@ function extractHashId(hash) {
   return match ? match[0] : null;
 }
 function assertNotionDomain(url) {
-  if (!/notion\.so$/i.test(url.hostname) && !/\.notion\.site$/i.test(url.hostname)) {
+  const hostname = url.hostname.toLowerCase();
+  if (!/notion\.so$/i.test(hostname) && !/\.notion\.site$/i.test(hostname) && hostname !== "app.notion.com") {
     throw new PluginError("INVALID_INPUT", "URL must be a Notion URL.");
   }
 }

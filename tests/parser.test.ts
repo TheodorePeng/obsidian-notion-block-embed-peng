@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildCanonicalNotionBlockUrl, parseNotionBlockUrl, parseNotionTargetFromSource } from "../src/notion/parser";
+import {
+  buildCanonicalNotionBlockUrl,
+  parseNotionBlockUrl,
+  parseNotionPageUrl,
+  parseNotionTargetFromSource,
+} from "../src/notion/parser";
 
 const SHORTLINK_NBE_URL =
   "https://www.shortlink.studio/1/obsidian%3A%2F%2Fnotion-block-embed%3Fvault%3DMy%2520Obsidian%26action%3Dopen-ref%26nbe%3Dp20260328161030-k7_b15oxob";
@@ -13,6 +18,14 @@ describe("parseNotionBlockUrl", () => {
       "https://www.notion.so/03_Github-mp4-3294cb8807f2811ab8baf0a10f76a5ad?source=copy_link#d05907aae5b146d98eface29afae7844",
     );
     expect(parsed.pageId).toBe("3294cb88-07f2-811a-b8ba-f0a10f76a5ad");
+    expect(parsed.blockId).toBe("d05907aa-e5b1-46d9-8efa-ce29afae7844");
+  });
+
+  it("parses app.notion.com block urls", () => {
+    const parsed = parseNotionBlockUrl(
+      "https://app.notion.com/p/nosycrew/60-Claude-Code-mp4-3711ce4b607281d385ffd9fcf77e46e4#d05907aae5b146d98eface29afae7844",
+    );
+    expect(parsed.pageId).toBe("3711ce4b-6072-81d3-85ff-d9fcf77e46e4");
     expect(parsed.blockId).toBe("d05907aa-e5b1-46d9-8efa-ce29afae7844");
   });
 
@@ -39,6 +52,19 @@ describe("parseNotionBlockUrl", () => {
       pageId: "3294cb88-07f2-811a-b8ba-f0a10f76a5ad",
       blockId: "d05907aa-e5b1-46d9-8efa-ce29afae7844",
     });
+  });
+});
+
+describe("parseNotionPageUrl", () => {
+  it("parses app.notion.com page urls", () => {
+    const parsed = parseNotionPageUrl(
+      "https://app.notion.com/p/nosycrew/60-Claude-Code-mp4-3711ce4b607281d385ffd9fcf77e46e4",
+    );
+    expect(parsed.pageId).toBe("3711ce4b-6072-81d3-85ff-d9fcf77e46e4");
+  });
+
+  it("rejects non-editor notion.com pages", () => {
+    expect(() => parseNotionPageUrl("https://www.notion.com/templates")).toThrow("Notion URL");
   });
 });
 
