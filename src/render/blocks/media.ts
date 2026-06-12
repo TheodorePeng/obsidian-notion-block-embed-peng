@@ -52,7 +52,7 @@ export function renderMediaBlockContent(host: HTMLElement, node: EmbedBlockNode,
   } else {
     const missing = document.createElement('div');
     missing.className = 'nbe-unsupported';
-    missing.textContent = 'Image URL is missing.';
+    missing.textContent = node.props.imageUnavailableReason ?? 'Image URL is missing.';
     frame.appendChild(missing);
   }
 

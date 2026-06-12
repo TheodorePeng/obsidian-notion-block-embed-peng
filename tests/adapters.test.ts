@@ -33,6 +33,70 @@ describe("toEmbedNodeTree", () => {
     expect(mapped.richText[0]?.plainText).toBe("hello image");
   });
 
+  it("maps notion-hosted image file URLs", () => {
+    const tree: NotionApiBlockTree = {
+      block: {
+        object: "block",
+        id: "11111111-1111-1111-1111-111111111111",
+        type: "image",
+        image: {
+          type: "file",
+          file: {
+            url: "https://s3.us-west-2.amazonaws.com/secure.notion-static.com/a.png",
+            expiry_time: "2026-06-12T09:00:00.000Z",
+          },
+          caption: [],
+        },
+      },
+      children: [],
+    };
+
+    const mapped = toEmbedNodeTree(tree, "22222222-2222-2222-2222-222222222222");
+    expect(mapped.props.imageUrl).toBe("https://s3.us-west-2.amazonaws.com/secure.notion-static.com/a.png");
+    expect(mapped.props.imageUnavailableReason).toBeUndefined();
+  });
+
+  it("explains file_upload image references that have no download URL yet", () => {
+    const tree: NotionApiBlockTree = {
+      block: {
+        object: "block",
+        id: "11111111-1111-1111-1111-111111111111",
+        type: "image",
+        image: {
+          type: "file_upload",
+          file_upload: {
+            id: "43833259-72ae-404e-8441-b6577f3159b4",
+          },
+          caption: [],
+        },
+      },
+      children: [],
+    };
+
+    const mapped = toEmbedNodeTree(tree, "22222222-2222-2222-2222-222222222222");
+    expect(mapped.props.imageUrl).toBeUndefined();
+    expect(mapped.props.imageUnavailableReason).toContain("file_upload");
+  });
+
+  it("explains private attachment image blocks that Notion exposes without file data", () => {
+    const tree: NotionApiBlockTree = {
+      block: {
+        object: "block",
+        id: "37d1ce4b-6072-81f1-bcc2-cb7251c82d8f",
+        type: "image",
+        has_children: false,
+        image: {
+          caption: [],
+        },
+      },
+      children: [],
+    };
+
+    const mapped = toEmbedNodeTree(tree, "37c1ce4b-6072-817d-88d1-c6d1be39e39e");
+    expect(mapped.props.imageUrl).toBeUndefined();
+    expect(mapped.props.imageUnavailableReason).toContain("did not expose a file source");
+  });
+
   it("maps notion column width ratio", () => {
     const tree: NotionApiBlockTree = {
       block: {

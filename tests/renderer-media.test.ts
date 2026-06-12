@@ -21,6 +21,18 @@ describe("renderEmbed media", () => {
     expect(container.textContent).toContain("Caption");
   });
 
+  it("renders image unavailable reason when imageUrl is missing", () => {
+    const root = createNode("image", "Caption");
+    root.props.imageUnavailableReason = "Notion did not expose a file source for this image.";
+
+    const { container } = renderTestEmbed(root, {
+      currentUrl: "https://www.notion.so/page#block",
+    });
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("Notion did not expose a file source for this image.");
+  });
+
   it("applies remembered image width and renders resize handle", () => {
     const root = createNode("image", "Caption");
     root.id = "image-block-1";

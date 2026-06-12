@@ -1084,17 +1084,44 @@ function mapRichTextList(items) {
     } : void 0
   }));
 }
-function getImageUrl(data) {
+function getUrlFromTypeData(data, key) {
+  const value = data[key];
+  if (!value || typeof value !== "object") return void 0;
+  const url = value.url;
+  return typeof url === "string" && url.trim() ? url : void 0;
+}
+function getImageProps(data) {
   const type = typeof data.type === "string" ? data.type : "";
+  const directUrl = typeof data.url === "string" && data.url.trim() ? data.url : void 0;
+  if (directUrl) {
+    return { imageUrl: directUrl };
+  }
   if (type === "external") {
-    const external = data.external;
-    return typeof external?.url === "string" ? external.url : void 0;
+    const imageUrl = getUrlFromTypeData(data, "external");
+    return imageUrl ? { imageUrl } : { imageUnavailableReason: "External image URL is missing." };
   }
   if (type === "file") {
-    const file = data.file;
-    return typeof file?.url === "string" ? file.url : void 0;
+    const imageUrl = getUrlFromTypeData(data, "file");
+    return imageUrl ? { imageUrl } : { imageUnavailableReason: "Notion did not return a downloadable URL for this image file." };
   }
-  return void 0;
+  if (type === "file_upload") {
+    const imageUrl = getUrlFromTypeData(data, "file_upload");
+    return imageUrl ? { imageUrl } : {
+      imageUnavailableReason: "Notion returned a file_upload reference without a downloadable URL. Re-fetch the block after the upload is attached."
+    };
+  }
+  const fallbackUrl = getUrlFromTypeData(data, "file") ?? getUrlFromTypeData(data, "external");
+  if (fallbackUrl) {
+    return { imageUrl: fallbackUrl };
+  }
+  if (!type && Array.isArray(data.caption) && Object.keys(data).length === 1) {
+    return {
+      imageUnavailableReason: "Notion did not expose a file source for this image. This often happens with private attachment images imported into Notion."
+    };
+  }
+  return {
+    imageUnavailableReason: type ? `Unsupported Notion image type: ${type}.` : "Image URL is missing."
+  };
 }
 function getProps(block) {
   const data = getTypeData(block);
@@ -1109,9 +1136,7 @@ function getProps(block) {
     };
   }
   if (block.type === "image") {
-    return {
-      imageUrl: getImageUrl(data)
-    };
+    return getImageProps(data);
   }
   if (block.type === "column") {
     return {
@@ -3297,7 +3322,7 @@ function renderMediaBlockContent(host, node, ctx) {
   } else {
     const missing = document.createElement("div");
     missing.className = "nbe-unsupported";
-    missing.textContent = "Image URL is missing.";
+    missing.textContent = node.props.imageUnavailableReason ?? "Image URL is missing.";
     frame.appendChild(missing);
   }
   if (node.richText.length > 0) {

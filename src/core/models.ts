@@ -141,6 +141,7 @@ export interface EmbedBlockProps {
   checked?: boolean;
   codeLanguage?: string;
   imageUrl?: string;
+  imageUnavailableReason?: string;
   columnWidthRatio?: number;
   equationExpression?: string;
   syncedFromBlockId?: string | null;

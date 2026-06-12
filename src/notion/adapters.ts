@@ -37,23 +37,62 @@ function mapRichTextList(items: NotionApiRichText[]): EmbedRichText[] {
   }));
 }
 
-function getImageUrl(data: Record<string, unknown>): string | undefined {
+function getUrlFromTypeData(data: Record<string, unknown>, key: string): string | undefined {
+  const value = data[key];
+  if (!value || typeof value !== "object") return undefined;
+  const url = (value as { url?: unknown }).url;
+  return typeof url === "string" && url.trim() ? url : undefined;
+}
+
+function getImageProps(data: Record<string, unknown>): { imageUrl?: string; imageUnavailableReason?: string } {
   const type = typeof data.type === "string" ? data.type : "";
+  const directUrl = typeof data.url === "string" && data.url.trim() ? data.url : undefined;
+  if (directUrl) {
+    return { imageUrl: directUrl };
+  }
+
   if (type === "external") {
-    const external = data.external as { url?: unknown } | undefined;
-    return typeof external?.url === "string" ? external.url : undefined;
+    const imageUrl = getUrlFromTypeData(data, "external");
+    return imageUrl ? { imageUrl } : { imageUnavailableReason: "External image URL is missing." };
   }
   if (type === "file") {
-    const file = data.file as { url?: unknown } | undefined;
-    return typeof file?.url === "string" ? file.url : undefined;
+    const imageUrl = getUrlFromTypeData(data, "file");
+    return imageUrl
+      ? { imageUrl }
+      : { imageUnavailableReason: "Notion did not return a downloadable URL for this image file." };
   }
-  return undefined;
+  if (type === "file_upload") {
+    const imageUrl = getUrlFromTypeData(data, "file_upload");
+    return imageUrl
+      ? { imageUrl }
+      : {
+          imageUnavailableReason:
+            "Notion returned a file_upload reference without a downloadable URL. Re-fetch the block after the upload is attached.",
+        };
+  }
+
+  const fallbackUrl = getUrlFromTypeData(data, "file") ?? getUrlFromTypeData(data, "external");
+  if (fallbackUrl) {
+    return { imageUrl: fallbackUrl };
+  }
+
+  if (!type && Array.isArray(data.caption) && Object.keys(data).length === 1) {
+    return {
+      imageUnavailableReason:
+        "Notion did not expose a file source for this image. This often happens with private attachment images imported into Notion.",
+    };
+  }
+
+  return {
+    imageUnavailableReason: type ? `Unsupported Notion image type: ${type}.` : "Image URL is missing.",
+  };
 }
 
 function getProps(block: NotionApiBlock): {
   checked?: boolean;
   codeLanguage?: string;
   imageUrl?: string;
+  imageUnavailableReason?: string;
   columnWidthRatio?: number;
   equationExpression?: string;
   syncedFromBlockId?: string | null;
@@ -70,9 +109,7 @@ function getProps(block: NotionApiBlock): {
     };
   }
   if (block.type === "image") {
-    return {
-      imageUrl: getImageUrl(data),
-    };
+    return getImageProps(data);
   }
   if (block.type === "column") {
     return {
