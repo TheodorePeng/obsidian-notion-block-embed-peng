@@ -568,6 +568,15 @@ class LightweightNbePageScanner {
 
   private async loadDescendantBlocks(block: NotionApiBlock, depth: number): Promise<NotionApiBlock[]> {
     if (depth > MAX_TREE_DEPTH) return [];
+    if (block.type === "unsupported") {
+      const unsupported = block.unsupported;
+      const blockType =
+        unsupported && typeof unsupported === "object" && typeof (unsupported as { block_type?: unknown }).block_type === "string"
+          ? (unsupported as { block_type: string }).block_type
+          : "unknown";
+      this.logger.debug(`repository light-scan skipped unsupported block=${block.id} type=${blockType}`);
+      return [];
+    }
     if (block.type !== "synced_block") {
       if (!block.has_children) return [];
       return this.client.listBlockChildren(block.id);

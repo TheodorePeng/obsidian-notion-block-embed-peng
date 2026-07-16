@@ -509,6 +509,37 @@ describe("NotionRepository", () => {
     expect(client.listBlockChildren).toHaveBeenCalledTimes(1);
   });
 
+  it("skips unsupported blocks while building an NBE page index", async () => {
+    const ref = "p20260328153045-k7_b7k2m9";
+    const href = makeNbeUri(ref);
+    const unsupportedBlock: NotionApiBlock = {
+      object: "block",
+      id: "unsupported-1",
+      type: "unsupported",
+      has_children: true,
+      unsupported: {
+        block_type: "ai_block",
+      },
+    };
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => makeBlock(id, id === "page-1" ? "page" : "paragraph", false)),
+      listBlockChildren: vi.fn(async (id: string) => {
+        if (id === "page-1") {
+          return [unsupportedBlock, makeLinkedParagraph("block-1", href)];
+        }
+        throw new Error(`unexpected children request for ${id}`);
+      }),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    const resolved = await repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true);
+
+    expect(resolved.blockId).toBe("block-1");
+    expect(client.listBlockChildren).not.toHaveBeenCalledWith("unsupported-1");
+  });
+
   it("resolves an NBE ref from plain_text when the page stores a naked URI instead of a Notion link", async () => {
     const href = "obsidian://notion-block-embed?vault=My%20Vault&action=open-ref&nbe=p20260328153045-k7_b7k2m9";
     const client = {
