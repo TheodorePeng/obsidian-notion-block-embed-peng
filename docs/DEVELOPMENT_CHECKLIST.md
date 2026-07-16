@@ -28,6 +28,19 @@ Then bump version:
 npm run bump:patch
 ```
 
+## Local Vault Development
+
+The source repository is the only development source. The installed Vault copy is a runtime mirror and must not be used for source edits or reverse synchronization.
+
+Set the target plugin directory in the shell before starting the build watcher:
+
+```bash
+export OBSIDIAN_NOTION_EMBED_PLUGIN_DIR="/path/to/vault/.obsidian/plugins/obsidian-notion-block-embed-peng"
+npm run dev:vault
+```
+
+The deploy mode copies only `main.js`, `manifest.json`, and `styles.css`. It never copies `data.json`, `.git`, source files, or caches. Reload the plugin in Obsidian after a successful deployment.
+
 ## PR Summary Template
 
 - What changed:

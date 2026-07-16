@@ -114,6 +114,9 @@ function userMessageFromError(error) {
   if (resolved.code === "NOTION_RATE_LIMIT") {
     return "Notion API rate limit reached. Please retry in a moment.";
   }
+  if (resolved.code === "NOTION_BAD_REQUEST") {
+    return `Notion API rejected the request: ${resolved.message}`;
+  }
   if (resolved.code === "WRITE_CONFLICT") {
     return "Remote content changed while editing. Refresh and try again.";
   }
@@ -1467,12 +1470,29 @@ function clearSharedEmbedLoadTasks() {
 
 // src/notion/client.ts
 var import_obsidian2 = require("obsidian");
-function buildNotionError(status, detail) {
+function stringifyPayload(payload) {
+  if (typeof payload === "string") return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return String(payload);
+  }
+}
+function notionErrorMessage(payload) {
+  if (payload && typeof payload === "object" && typeof payload.message === "string") {
+    return payload.message;
+  }
+  return stringifyPayload(payload);
+}
+function buildNotionError(status, payload) {
+  const detail = stringifyPayload(payload);
+  const message = notionErrorMessage(payload);
   if (status === 401) return new PluginError("NOTION_UNAUTHORIZED", "Unauthorized", status, detail);
   if (status === 403) return new PluginError("NOTION_FORBIDDEN", "Forbidden", status, detail);
   if (status === 404) return new PluginError("NOTION_NOT_FOUND", "Not found", status, detail);
   if (status === 429) return new PluginError("NOTION_RATE_LIMIT", "Rate limit", status, detail);
-  return new PluginError("UNKNOWN", `Notion API ${status}: ${detail}`, status, detail);
+  if (status === 400) return new PluginError("NOTION_BAD_REQUEST", message || "Bad request", status, detail);
+  return new PluginError("UNKNOWN", `Notion API ${status}: ${message}`, status, detail);
 }
 var RETRY_DELAYS_MS = [300, 900, 1800];
 function delay(ms) {
@@ -1499,7 +1519,8 @@ var NotionClient = class {
             "Notion-Version": NOTION_VERSION,
             "Content-Type": "application/json"
           },
-          body: body ? JSON.stringify(body) : void 0
+          body: body ? JSON.stringify(body) : void 0,
+          throw: false
         });
         const text = response.text ?? "";
         let payload;
@@ -1509,8 +1530,7 @@ var NotionClient = class {
           payload = text;
         }
         if (response.status < 200 || response.status >= 300) {
-          const detail = typeof payload === "object" ? JSON.stringify(payload) : String(payload);
-          const error = buildNotionError(response.status, detail);
+          const error = buildNotionError(response.status, payload);
           if (shouldRetryStatus(response.status) && attempt < maxAttempts) {
             await delay(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
             continue;
@@ -2139,6 +2159,12 @@ var LightweightNbePageScanner = class {
   }
   async loadDescendantBlocks(block, depth) {
     if (depth > MAX_TREE_DEPTH) return [];
+    if (block.type === "unsupported") {
+      const unsupported = block.unsupported;
+      const blockType = unsupported && typeof unsupported === "object" && typeof unsupported.block_type === "string" ? unsupported.block_type : "unknown";
+      this.logger.debug(`repository light-scan skipped unsupported block=${block.id} type=${blockType}`);
+      return [];
+    }
     if (block.type !== "synced_block") {
       if (!block.has_children) return [];
       return this.client.listBlockChildren(block.id);
