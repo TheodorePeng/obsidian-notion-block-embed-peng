@@ -5,6 +5,7 @@ export type PluginErrorCode =
   | "NOTION_FORBIDDEN"
   | "NOTION_NOT_FOUND"
   | "NOTION_RATE_LIMIT"
+  | "NOTION_BAD_REQUEST"
   | "WRITE_CONFLICT"
   | "NETWORK"
   | "UNKNOWN";
@@ -45,6 +46,9 @@ export function userMessageFromError(error: unknown): string {
   }
   if (resolved.code === "NOTION_RATE_LIMIT") {
     return "Notion API rate limit reached. Please retry in a moment.";
+  }
+  if (resolved.code === "NOTION_BAD_REQUEST") {
+    return `Notion API rejected the request: ${resolved.message}`;
   }
   if (resolved.code === "WRITE_CONFLICT") {
     return "Remote content changed while editing. Refresh and try again.";

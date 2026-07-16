@@ -1,3 +1,5 @@
+import { vi } from "vitest";
+
 export class Notice {
   constructor(public readonly message?: string) {}
 }
@@ -95,6 +97,6 @@ export class Setting {
   }
 }
 
-export async function requestUrl(): Promise<never> {
-  throw new Error('requestUrl mock not implemented in this test');
-}
+export const requestUrl = vi.fn(async (): Promise<never> => {
+  throw new Error("requestUrl mock not implemented in this test");
+});

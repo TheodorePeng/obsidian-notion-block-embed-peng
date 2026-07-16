@@ -26,12 +26,31 @@ interface QueryDatabaseResponse {
   next_cursor: string | null;
 }
 
-function buildNotionError(status: number, detail: string): PluginError {
+function stringifyPayload(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return String(payload);
+  }
+}
+
+function notionErrorMessage(payload: unknown): string {
+  if (payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string") {
+    return (payload as { message: string }).message;
+  }
+  return stringifyPayload(payload);
+}
+
+function buildNotionError(status: number, payload: unknown): PluginError {
+  const detail = stringifyPayload(payload);
+  const message = notionErrorMessage(payload);
   if (status === 401) return new PluginError("NOTION_UNAUTHORIZED", "Unauthorized", status, detail);
   if (status === 403) return new PluginError("NOTION_FORBIDDEN", "Forbidden", status, detail);
   if (status === 404) return new PluginError("NOTION_NOT_FOUND", "Not found", status, detail);
   if (status === 429) return new PluginError("NOTION_RATE_LIMIT", "Rate limit", status, detail);
-  return new PluginError("UNKNOWN", `Notion API ${status}: ${detail}`, status, detail);
+  if (status === 400) return new PluginError("NOTION_BAD_REQUEST", message || "Bad request", status, detail);
+  return new PluginError("UNKNOWN", `Notion API ${status}: ${message}`, status, detail);
 }
 
 const RETRY_DELAYS_MS = [300, 900, 1800] as const;
@@ -69,6 +88,7 @@ export class NotionClient {
             "Content-Type": "application/json",
           },
           body: body ? JSON.stringify(body) : undefined,
+          throw: false,
         });
 
         const text = response.text ?? "";
@@ -80,8 +100,7 @@ export class NotionClient {
         }
 
         if (response.status < 200 || response.status >= 300) {
-          const detail = typeof payload === "object" ? JSON.stringify(payload) : String(payload);
-          const error = buildNotionError(response.status, detail);
+          const error = buildNotionError(response.status, payload);
           if (shouldRetryStatus(response.status) && attempt < maxAttempts) {
             await delay(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
             continue;
