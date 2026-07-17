@@ -41,6 +41,18 @@ npm run dev:vault
 
 The deploy mode copies only `main.js`, `manifest.json`, and `styles.css`. It never copies `data.json`, `.git`, source files, or caches. Reload the plugin in Obsidian after a successful deployment.
 
+## Notion API Container Boundaries
+
+- An NBE marker in the first direct heading child of a callout resolves to the callout ID;
+  this is the supported way to embed the complete callout subtree.
+- Markers in later children, ordinary toggles, paragraphs, and non-callout parents keep
+  their original block target.
+- The repository hydrates every supported API-visible descendant recursively, including
+  nested callouts, tables/table rows, dividers, lists, equations, images, and quotes.
+- `unsupported.block_type` descendants are retained as explicit placeholders and are never
+  queried for children. This is intentional for API-only types such as `button` and
+  `ai_block`; do not add browser scraping or private Notion API fallbacks.
+
 ## PR Summary Template
 
 - What changed:

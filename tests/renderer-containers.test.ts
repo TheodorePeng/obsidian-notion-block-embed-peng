@@ -35,4 +35,50 @@ describe("renderEmbed container blocks", () => {
     expect(container.textContent).not.toContain("Callout title");
     expect(container.querySelector("table.nbe-table")).toBeFalsy();
   });
+
+  it("uses row headers and pads missing cells without dropping table data", () => {
+    const root = toEmbedNodeTree(
+      {
+        block: {
+          object: "block",
+          id: "table-headers",
+          type: "table",
+          has_children: true,
+          table: { table_width: 3, has_column_header: false, has_row_header: true },
+        },
+        children: [
+          {
+            block: {
+              object: "block",
+              id: "table-header-row",
+              type: "table_row",
+              has_children: false,
+              table_row: {
+                cells: [[{ type: "text", plain_text: "Row 1" }], [{ type: "text", plain_text: "Value 1" }]],
+              },
+            },
+            children: [],
+          },
+          {
+            block: {
+              object: "block",
+              id: "table-data-row",
+              type: "table_row",
+              has_children: false,
+              table_row: { cells: [[{ type: "text", plain_text: "Row 2" }]] },
+            },
+            children: [],
+          },
+        ],
+      },
+      "page-1",
+    );
+    const { container } = renderTestEmbed(root);
+    const table = container.querySelector("table.nbe-table");
+
+    expect(table?.querySelectorAll("tr")).toHaveLength(2);
+    expect(table?.querySelectorAll("th")).toHaveLength(2);
+    expect(table?.querySelectorAll("td")).toHaveLength(4);
+    expect(table?.textContent).toContain("Value 1");
+  });
 });

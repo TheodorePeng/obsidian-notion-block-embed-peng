@@ -47,6 +47,27 @@ export const calloutContentTree: NotionApiBlockTree = tree(
       }),
     ),
     tree(
+      makeBlock("image-1", "image", {
+        type: "external",
+        external: { url: "https://example.com/notion-image.png" },
+        caption: [text("OCR Notes")],
+      }),
+    ),
+    tree(
+      makeBlock("toggle-1", "toggle", { rich_text: [text("Toggle section")] }, true),
+      [tree(makeBlock("toggle-child", "paragraph", { rich_text: [text("Toggle child")] }))],
+    ),
+    tree(
+      makeBlock("list-1", "bulleted_list_item", { rich_text: [text("List item")] }, true),
+      [
+        tree(
+          makeBlock("list-2", "bulleted_list_item", { rich_text: [text("Deep list item")] }, true),
+          [tree(makeBlock("list-3", "numbered_list_item", { rich_text: [text("Deep numbered item")] }))],
+        ),
+      ],
+    ),
+    tree(makeBlock("equation-1", "equation", { expression: "a^2 + b^2 = c^2" })),
+    tree(
       makeBlock(
         "table-1",
         "table",
@@ -59,6 +80,7 @@ export const calloutContentTree: NotionApiBlockTree = tree(
       ),
       [row("row-1", ["Column A", "Column B"]), row("row-2", ["Value A", "Value B"])],
     ),
+    tree(makeBlock("quote-1", "quote", { rich_text: [text("Quote from Notion")] })),
     tree(makeBlock("divider-1", "divider", {})),
     tree(
       makeBlock(
@@ -78,6 +100,14 @@ export const calloutContentTree: NotionApiBlockTree = tree(
         "unsupported-ai",
         "unsupported",
         { block_type: "ai_block" },
+        true,
+      ),
+    ),
+    tree(
+      makeBlock(
+        "unsupported-button",
+        "unsupported",
+        { block_type: "button" },
         true,
       ),
     ),

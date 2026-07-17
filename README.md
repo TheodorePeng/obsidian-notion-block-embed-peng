@@ -39,7 +39,13 @@ heading: Your Heading Text
   - equation (inline rich_text + standalone equation block)
   - image (external/file URL, resizable with remembered width)
   - column_list / column
+  - callout (including nested children and emoji/URL icons)
+  - table / table_row (rich text cells, column/row headers, horizontal scrolling)
+  - divider
 - Unsupported block types are shown as a readable placeholder
+- Notion API-only blocks such as `button` and `ai_block` remain visible as explicit
+  `Content unavailable via Notion API: <block_type>` placeholders; the plugin does not
+  scrape the Notion web UI or use private APIs.
 - Optional limited writeback for text-like block types
 - Optional interval auto-refresh (manual / interval)
 - Optional writeback conflict policy (`none` / `fail_on_conflict`)
@@ -76,6 +82,13 @@ heading: Your Heading Text
 - Canvas support is read-only preview by reusing rendered note content.
 - Column layouts reuse the same rendering in Note and Canvas; narrow containers automatically stack columns vertically.
 - Complex nested writeback remains out of scope for the current version.
+
+## NBE Callout References
+
+When an NBE marker appears in the first direct `heading_1`, `heading_2`, or `heading_3`
+child of a Notion callout, the reference resolves to the callout container so its complete
+API-visible subtree can be rendered. Markers in later callout children, ordinary toggles,
+or non-callout blocks continue to resolve to the block containing the marker.
 
 ## Single-Pipeline Rule
 
