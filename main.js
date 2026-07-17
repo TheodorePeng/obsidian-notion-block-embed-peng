@@ -71,6 +71,7 @@ var MAX_TREE_DEPTH = 20;
 var CACHE_TTL_MS = 6e4;
 var TREE_CACHE_MAX_ENTRIES = 128;
 var NBE_RESOLUTION_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
+var NBE_RESOLUTION_SCHEMA_VERSION = 2;
 var NBE_RESOLUTION_CACHE_MAX_PAGES_PER_TOKEN = 256;
 var NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN = 2048;
 var REPOSITORY_TREE_CONCURRENCY = 2;
@@ -340,7 +341,7 @@ function normalizeNbeRegistry(raw) {
   return registry;
 }
 function normalizeResolvedPageIndex(raw, pageNbeId) {
-  if (!isRecord(raw) || typeof raw.pageId !== "string" || !isRecord(raw.blocks)) {
+  if (!isRecord(raw) || raw.schemaVersion !== NBE_RESOLUTION_SCHEMA_VERSION || typeof raw.pageId !== "string" || !isRecord(raw.blocks)) {
     return null;
   }
   const blocks = Object.fromEntries(
@@ -348,6 +349,7 @@ function normalizeResolvedPageIndex(raw, pageNbeId) {
   );
   const resolvedAt = typeof raw.resolvedAt === "number" ? raw.resolvedAt : Date.now();
   return {
+    schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
     pageNbeId,
     pageId: raw.pageId,
     blocks,
@@ -355,7 +357,7 @@ function normalizeResolvedPageIndex(raw, pageNbeId) {
   };
 }
 function normalizeResolvedTarget(raw, ref) {
-  if (!isRecord(raw) || typeof raw.pageNbeId !== "string" || typeof raw.blockNbeId !== "string" || typeof raw.pageId !== "string" || typeof raw.blockId !== "string") {
+  if (!isRecord(raw) || raw.schemaVersion !== NBE_RESOLUTION_SCHEMA_VERSION || typeof raw.pageNbeId !== "string" || typeof raw.blockNbeId !== "string" || typeof raw.pageId !== "string" || typeof raw.blockId !== "string") {
     return null;
   }
   let parsedRef;
@@ -371,6 +373,7 @@ function normalizeResolvedTarget(raw, ref) {
   if (!parsedRef) return null;
   const resolvedAt = typeof raw.resolvedAt === "number" ? raw.resolvedAt : Date.now();
   return {
+    schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
     ref: parsedRef.ref,
     pageNbeId: parsedRef.pageNbeId,
     blockNbeId: parsedRef.blockNbeId,
@@ -761,6 +764,7 @@ function cloneResolvedTargetCache(cache) {
 }
 function cloneResolvedPageIndex(pageIndex) {
   return {
+    schemaVersion: pageIndex.schemaVersion,
     pageNbeId: pageIndex.pageNbeId,
     pageId: pageIndex.pageId,
     blocks: { ...pageIndex.blocks },
@@ -769,6 +773,7 @@ function cloneResolvedPageIndex(pageIndex) {
 }
 function cloneResolvedTarget(target) {
   return {
+    schemaVersion: target.schemaVersion,
     ref: target.ref,
     pageNbeId: target.pageNbeId,
     blockNbeId: target.blockNbeId,
@@ -1061,6 +1066,16 @@ function getBlockCapabilities(block, childCount = 0) {
   };
 }
 
+// src/notion/unsupported-block.ts
+function getUnsupportedBlockType(block) {
+  if (block.type !== "unsupported") return null;
+  const data = block.unsupported;
+  if (data && typeof data === "object" && typeof data.block_type === "string") {
+    return data.block_type;
+  }
+  return "unknown";
+}
+
 // src/notion/adapters.ts
 function getTypeData(block) {
   const data = block[block.type];
@@ -1126,6 +1141,25 @@ function getImageProps(data) {
     imageUnavailableReason: type ? `Unsupported Notion image type: ${type}.` : "Image URL is missing."
   };
 }
+function getCalloutIcon(data) {
+  const icon = data.icon;
+  if (!icon || typeof icon !== "object") return void 0;
+  const iconData = icon;
+  if (iconData.type === "emoji" && typeof iconData.emoji === "string" && iconData.emoji) {
+    return { kind: "emoji", value: iconData.emoji };
+  }
+  const iconType = iconData.type;
+  if (iconType !== "external" && iconType !== "file" && iconType !== "custom_emoji") return void 0;
+  const source = iconData[iconType];
+  if (!source || typeof source !== "object") return void 0;
+  const url = source.url;
+  if (typeof url !== "string" || !url.trim()) return void 0;
+  return { kind: "image", url, alt: iconType === "custom_emoji" ? "Custom emoji" : "Callout icon" };
+}
+function getTableCells(data) {
+  if (!Array.isArray(data.cells)) return void 0;
+  return data.cells.map((cell) => Array.isArray(cell) ? mapRichTextList(cell) : []);
+}
 function getProps(block) {
   const data = getTypeData(block);
   if (block.type === "to_do") {
@@ -1155,6 +1189,29 @@ function getProps(block) {
     const syncedFrom = data.synced_from;
     return {
       syncedFromBlockId: typeof syncedFrom?.block_id === "string" ? syncedFrom.block_id : null
+    };
+  }
+  if (block.type === "callout") {
+    return {
+      calloutColor: typeof data.color === "string" ? data.color : void 0,
+      calloutIcon: getCalloutIcon(data)
+    };
+  }
+  if (block.type === "table") {
+    return {
+      tableWidth: typeof data.table_width === "number" ? data.table_width : void 0,
+      tableHasColumnHeader: Boolean(data.has_column_header),
+      tableHasRowHeader: Boolean(data.has_row_header)
+    };
+  }
+  if (block.type === "table_row") {
+    return {
+      tableCells: getTableCells(data)
+    };
+  }
+  if (block.type === "unsupported") {
+    return {
+      unsupportedBlockType: getUnsupportedBlockType(block) ?? "unknown"
     };
   }
   return {};
@@ -1659,6 +1716,11 @@ var NotionChildrenHydrator = class {
   }
   async loadChildrenForBlock(block, depth) {
     if (!block.has_children || depth > MAX_TREE_DEPTH) return [];
+    const unsupportedType = getUnsupportedBlockType(block);
+    if (unsupportedType) {
+      this.logger.debug(`repository hydration skipped unsupported block=${block.id} type=${unsupportedType}`);
+      return [];
+    }
     if (block.type !== "synced_block") {
       return this.loadChildren(block.id, depth);
     }
@@ -2009,6 +2071,7 @@ var NotionRepository = class {
     try {
       const tree = await this.getBlockTree(blockId, includeChildren);
       await this.cacheResolvedTarget({
+        schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
         ref,
         pageNbeId,
         blockNbeId,
@@ -2113,6 +2176,13 @@ function getTypeData2(block) {
   const data = block[block.type];
   return data && typeof data === "object" ? data : {};
 }
+function resolveNbeTargetBlockId(block, parentBlock, siblingIndex) {
+  const isHeading = block.type === "heading_1" || block.type === "heading_2" || block.type === "heading_3";
+  if (parentBlock?.type === "callout" && siblingIndex === 0 && isHeading) {
+    return parentBlock.id;
+  }
+  return block.id;
+}
 var LightweightNbePageScanner = class {
   constructor(client, logger) {
     this.client = client;
@@ -2122,9 +2192,10 @@ var LightweightNbePageScanner = class {
     const blocks = {};
     const duplicateRefs = /* @__PURE__ */ new Set();
     const topLevel = await this.client.listBlockChildren(pageId);
-    await this.processBlocks(topLevel, 1, pageNbeId, blocks, duplicateRefs);
+    await this.processBlocks(topLevel, 1, pageNbeId, blocks, duplicateRefs, null);
     return {
       pageIndex: {
+        schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
         pageNbeId,
         pageId,
         blocks,
@@ -2133,36 +2204,41 @@ var LightweightNbePageScanner = class {
       duplicateBlockNbeIds: duplicateRefs
     };
   }
-  async processBlocks(blocksAtDepth, depth, pageNbeId, resolvedBlocks, duplicateRefs) {
+  async processBlocks(blocksAtDepth, depth, pageNbeId, resolvedBlocks, duplicateRefs, parentBlock) {
     if (depth > MAX_TREE_DEPTH) return;
-    await mapWithConcurrency(blocksAtDepth, REPOSITORY_TREE_CONCURRENCY, async (block) => {
-      this.indexBlockRefs(block, pageNbeId, resolvedBlocks, duplicateRefs);
+    await mapWithConcurrency(blocksAtDepth, REPOSITORY_TREE_CONCURRENCY, async (block, index) => {
+      this.indexBlockRefs(block, pageNbeId, resolvedBlocks, duplicateRefs, parentBlock, index);
       if (depth >= MAX_TREE_DEPTH) return;
       const children = await this.loadDescendantBlocks(block, depth + 1);
       if (children.length === 0) return;
-      await this.processBlocks(children, depth + 1, pageNbeId, resolvedBlocks, duplicateRefs);
+      await this.processBlocks(children, depth + 1, pageNbeId, resolvedBlocks, duplicateRefs, block);
     });
   }
-  indexBlockRefs(block, pageNbeId, resolvedBlocks, duplicateRefs) {
+  indexBlockRefs(block, pageNbeId, resolvedBlocks, duplicateRefs, parentBlock = null, siblingIndex = -1) {
     const refs = extractNbeRefsFromBlock(block);
+    const targetBlockId = resolveNbeTargetBlockId(block, parentBlock, siblingIndex);
     for (const parsed of refs) {
       if (parsed.pageNbeId !== pageNbeId) continue;
-      if (resolvedBlocks[parsed.blockNbeId] && resolvedBlocks[parsed.blockNbeId] !== block.id) {
+      if (targetBlockId !== block.id) {
+        this.logger.debug(
+          `repository nbe-target promoted marker=${block.id} container=${targetBlockId} ref=${parsed.ref}`
+        );
+      }
+      if (resolvedBlocks[parsed.blockNbeId] && resolvedBlocks[parsed.blockNbeId] !== targetBlockId) {
         duplicateRefs.add(parsed.blockNbeId);
         delete resolvedBlocks[parsed.blockNbeId];
         continue;
       }
       if (!duplicateRefs.has(parsed.blockNbeId)) {
-        resolvedBlocks[parsed.blockNbeId] = block.id;
+        resolvedBlocks[parsed.blockNbeId] = targetBlockId;
       }
     }
   }
   async loadDescendantBlocks(block, depth) {
     if (depth > MAX_TREE_DEPTH) return [];
-    if (block.type === "unsupported") {
-      const unsupported = block.unsupported;
-      const blockType = unsupported && typeof unsupported === "object" && typeof unsupported.block_type === "string" ? unsupported.block_type : "unknown";
-      this.logger.debug(`repository light-scan skipped unsupported block=${block.id} type=${blockType}`);
+    const unsupportedType = getUnsupportedBlockType(block);
+    if (unsupportedType) {
+      this.logger.debug(`repository light-scan skipped unsupported block=${block.id} type=${unsupportedType}`);
       return [];
     }
     if (block.type !== "synced_block") {
@@ -3456,7 +3532,7 @@ function attachRowActions(host, node, ctx) {
 function renderUnsupported(parent, node) {
   const box = document.createElement("div");
   box.className = "nbe-unsupported";
-  box.textContent = `Unsupported block type: ${node.type}`;
+  box.textContent = node.props.unsupportedBlockType ? `Content unavailable via Notion API: ${node.props.unsupportedBlockType}` : `Unsupported block type: ${node.type}`;
   parent.appendChild(box);
 }
 
@@ -3527,6 +3603,12 @@ function renderTextBlockContent(host, node, ctx, renderNodes2) {
     host.appendChild(row);
     return true;
   }
+  if (node.type === "divider") {
+    const divider = document.createElement("hr");
+    divider.className = "nbe-divider";
+    host.appendChild(divider);
+    return true;
+  }
   if (node.type === "to_do") {
     const row = document.createElement("div");
     row.className = "nbe-todo nbe-item-line nbe-item-line-inline-controls";
@@ -3559,6 +3641,107 @@ function renderTextBlockContent(host, node, ctx, renderNodes2) {
     return true;
   }
   return false;
+}
+
+// src/render/blocks/callout.ts
+var CALLOUT_COLORS = /* @__PURE__ */ new Set([
+  "default",
+  "gray",
+  "gray_background",
+  "brown",
+  "brown_background",
+  "orange",
+  "orange_background",
+  "yellow",
+  "yellow_background",
+  "green",
+  "green_background",
+  "blue",
+  "blue_background",
+  "purple",
+  "purple_background",
+  "pink",
+  "pink_background",
+  "red",
+  "red_background"
+]);
+function normalizeCalloutColor(value) {
+  return value && CALLOUT_COLORS.has(value) ? value : "default";
+}
+function appendCalloutIcon(parent, node) {
+  const icon = node.props.calloutIcon;
+  if (!icon) return;
+  const iconHost = document.createElement("span");
+  iconHost.className = "nbe-callout-icon";
+  iconHost.setAttribute("aria-hidden", "true");
+  if (icon.kind === "emoji") {
+    iconHost.textContent = icon.value;
+  } else {
+    const image = document.createElement("img");
+    image.src = icon.url;
+    image.alt = icon.alt ?? "Callout icon";
+    iconHost.appendChild(image);
+  }
+  parent.appendChild(iconHost);
+}
+function renderCalloutBlockContent(host, node, ctx, renderNodes2) {
+  if (node.type !== "callout") return false;
+  const callout = document.createElement("div");
+  callout.className = "nbe-callout";
+  callout.dataset.nbeCalloutColor = normalizeCalloutColor(node.props.calloutColor);
+  appendCalloutIcon(callout, node);
+  const content = document.createElement("div");
+  content.className = "nbe-callout-content";
+  if (node.richText.length > 0) {
+    const title = document.createElement("div");
+    title.className = "nbe-callout-title";
+    appendRichTextOrFallback(title, node.richText);
+    content.appendChild(title);
+  }
+  if (ctx.showChildren && node.children.length > 0) {
+    const children = document.createElement("div");
+    children.className = "nbe-callout-children";
+    renderNodes2(children, node.children, ctx);
+    content.appendChild(children);
+  }
+  callout.appendChild(content);
+  host.appendChild(callout);
+  return true;
+}
+
+// src/render/blocks/table.ts
+function renderTableBlockContent(host, node, ctx) {
+  if (node.type !== "table") return false;
+  const wrapper = document.createElement("div");
+  wrapper.className = "nbe-table-scroll";
+  const table = document.createElement("table");
+  table.className = "nbe-table";
+  if (ctx.showChildren && node.children.length > 0) {
+    const width = Math.max(
+      node.props.tableWidth ?? 0,
+      ...node.children.map((row) => row.props.tableCells?.length ?? 0)
+    );
+    const hasColumnHeader = Boolean(node.props.tableHasColumnHeader);
+    const hasRowHeader = Boolean(node.props.tableHasRowHeader);
+    node.children.forEach((row, rowIndex) => {
+      const tableRow = document.createElement("tr");
+      const cells = row.props.tableCells ?? [];
+      const cellCount = Math.max(width, cells.length);
+      for (let columnIndex = 0; columnIndex < cellCount; columnIndex += 1) {
+        const isHeader = hasColumnHeader && rowIndex === 0 || hasRowHeader && columnIndex === 0;
+        const cell = document.createElement(isHeader ? "th" : "td");
+        if (isHeader) {
+          cell.scope = hasColumnHeader && rowIndex === 0 ? "col" : "row";
+        }
+        appendRichTextOrFallback(cell, cells[columnIndex] ?? []);
+        tableRow.appendChild(cell);
+      }
+      table.appendChild(tableRow);
+    });
+  }
+  wrapper.appendChild(table);
+  host.appendChild(wrapper);
+  return true;
 }
 
 // src/render/tree/leading.ts
@@ -3780,9 +3963,11 @@ function createPlainTreeShell(state) {
 
 // src/render/block-renderers.ts
 function layoutBlockOwnsChildRendering(type) {
-  return type === "column" || type === "column_list" || type === "synced_block";
+  return type === "callout" || type === "column" || type === "column_list" || type === "synced_block" || type === "table";
 }
 function renderBlockContent(host, node, ctx) {
+  if (renderCalloutBlockContent(host, node, ctx, renderNodes)) return;
+  if (renderTableBlockContent(host, node, ctx)) return;
   if (renderLayoutBlockContent(host, node, ctx, renderNodes)) return;
   if (renderTextBlockContent(host, node, ctx, renderNodes)) return;
   if (renderMediaBlockContent(host, node, ctx)) return;
