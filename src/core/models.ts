@@ -211,6 +211,7 @@ export interface NbeReferenceRegistryEntry {
 export type NbeReferenceRegistryMap = Record<string, NbeReferenceRegistryEntry>;
 
 export interface NbeResolvedPageIndex {
+  schemaVersion: number;
   pageNbeId: string;
   pageId: string;
   blocks: Record<string, string>;
@@ -218,6 +219,7 @@ export interface NbeResolvedPageIndex {
 }
 
 export interface NbeResolvedTarget extends ParsedNbeRef {
+  schemaVersion: number;
   pageId: string;
   blockId: string;
   resolvedAt: number;

@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, NotionBlockEmbedSettings } from "./settings";
 import {
   NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN,
   NBE_RESOLUTION_CACHE_MAX_PAGES_PER_TOKEN,
+  NBE_RESOLUTION_SCHEMA_VERSION,
   NBE_RESOLUTION_CACHE_TTL_MS,
 } from "./constants";
 import {
@@ -130,7 +131,12 @@ function normalizeNbeRegistry(raw: unknown): NbeReferenceRegistryMap {
 }
 
 function normalizeResolvedPageIndex(raw: unknown, pageNbeId: string): NbeResolvedPageIndex | null {
-  if (!isRecord(raw) || typeof raw.pageId !== "string" || !isRecord(raw.blocks)) {
+  if (
+    !isRecord(raw) ||
+    raw.schemaVersion !== NBE_RESOLUTION_SCHEMA_VERSION ||
+    typeof raw.pageId !== "string" ||
+    !isRecord(raw.blocks)
+  ) {
     return null;
   }
 
@@ -141,6 +147,7 @@ function normalizeResolvedPageIndex(raw: unknown, pageNbeId: string): NbeResolve
   const resolvedAt = typeof raw.resolvedAt === "number" ? raw.resolvedAt : Date.now();
 
   return {
+    schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
     pageNbeId,
     pageId: raw.pageId,
     blocks,
@@ -151,6 +158,7 @@ function normalizeResolvedPageIndex(raw: unknown, pageNbeId: string): NbeResolve
 function normalizeResolvedTarget(raw: unknown, ref: string): NbeResolvedTarget | null {
   if (
     !isRecord(raw) ||
+    raw.schemaVersion !== NBE_RESOLUTION_SCHEMA_VERSION ||
     typeof raw.pageNbeId !== "string" ||
     typeof raw.blockNbeId !== "string" ||
     typeof raw.pageId !== "string" ||
@@ -173,6 +181,7 @@ function normalizeResolvedTarget(raw: unknown, ref: string): NbeResolvedTarget |
   const resolvedAt = typeof raw.resolvedAt === "number" ? raw.resolvedAt : Date.now();
 
   return {
+    schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
     ref: parsedRef.ref,
     pageNbeId: parsedRef.pageNbeId,
     blockNbeId: parsedRef.blockNbeId,

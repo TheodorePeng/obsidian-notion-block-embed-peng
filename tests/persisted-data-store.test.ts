@@ -65,6 +65,7 @@ describe('PersistedDataStore', () => {
     const now = Date.now();
 
     await store.setNbeResolutionPageIndex('tkn123', {
+      schemaVersion: 2,
       pageNbeId: 'p20260328153045-k7',
       pageId: 'page-1',
       blocks: {
@@ -74,6 +75,7 @@ describe('PersistedDataStore', () => {
     });
 
     expect(store.getNbeResolutionPageIndex('tkn123', 'p20260328153045-k7')).toEqual({
+      schemaVersion: 2,
       pageNbeId: 'p20260328153045-k7',
       pageId: 'page-1',
       blocks: {
@@ -92,6 +94,7 @@ describe('PersistedDataStore', () => {
     const now = Date.now();
 
     await store.setNbeResolvedTarget('tkn123', {
+      schemaVersion: 2,
       ref: 'p20260328153045-k7_b7k2m9',
       pageNbeId: 'p20260328153045-k7',
       blockNbeId: 'b7k2m9',
@@ -101,6 +104,7 @@ describe('PersistedDataStore', () => {
     });
 
     expect(store.getNbeResolvedTarget('tkn123', 'p20260328153045-k7_b7k2m9')).toEqual({
+      schemaVersion: 2,
       ref: 'p20260328153045-k7_b7k2m9',
       pageNbeId: 'p20260328153045-k7',
       blockNbeId: 'b7k2m9',
@@ -109,6 +113,7 @@ describe('PersistedDataStore', () => {
       resolvedAt: now,
     });
     expect(store.getNbeResolvedTarget('tkn123', 'p20260328153045-k7::b7k2m9')).toEqual({
+      schemaVersion: 2,
       ref: 'p20260328153045-k7_b7k2m9',
       pageNbeId: 'p20260328153045-k7',
       blockNbeId: 'b7k2m9',
@@ -130,6 +135,7 @@ describe('PersistedDataStore', () => {
       const now = Date.now();
 
       await store.setNbeResolutionPageIndex('tkn123', {
+        schemaVersion: 2,
         pageNbeId: 'expired',
         pageId: 'page-expired',
         blocks: {},
@@ -138,6 +144,7 @@ describe('PersistedDataStore', () => {
 
       for (let index = 0; index < NBE_RESOLUTION_CACHE_MAX_PAGES_PER_TOKEN + 2; index += 1) {
         await store.setNbeResolutionPageIndex('tkn123', {
+          schemaVersion: 2,
           pageNbeId: `page-${index}`,
           pageId: `notion-page-${index}`,
           blocks: {
@@ -167,6 +174,7 @@ describe('PersistedDataStore', () => {
         Array.from({ length: NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN + 2 }, (_, index) => [
           `page_block-${index}`,
           {
+            schemaVersion: 2,
             ref: `page_block-${index}`,
             pageNbeId: 'page',
             blockNbeId: `block-${index}`,
@@ -181,6 +189,7 @@ describe('PersistedDataStore', () => {
           tkn123: {
             ...seededTargets,
             expired: {
+              schemaVersion: 2,
               ref: 'expired',
               pageNbeId: 'page',
               blockNbeId: 'expired',
@@ -194,6 +203,7 @@ describe('PersistedDataStore', () => {
       );
 
       await store.setNbeResolvedTarget('tkn123', {
+        schemaVersion: 2,
         ref: 'page_block-new',
         pageNbeId: 'page',
         blockNbeId: 'block-new',

@@ -1,4 +1,10 @@
-import { CACHE_TTL_MS, MAX_TREE_DEPTH, NBE_RESOLUTION_CACHE_TTL_MS, REPOSITORY_TREE_CONCURRENCY } from "../core/constants";
+import {
+  CACHE_TTL_MS,
+  MAX_TREE_DEPTH,
+  NBE_RESOLUTION_CACHE_TTL_MS,
+  NBE_RESOLUTION_SCHEMA_VERSION,
+  REPOSITORY_TREE_CONCURRENCY,
+} from "../core/constants";
 import { PluginError } from "../core/errors";
 import { Logger } from "../core/logger";
 import {
@@ -325,6 +331,7 @@ export class NotionRepository {
     try {
       const tree = await this.getBlockTree(blockId, includeChildren);
       await this.cacheResolvedTarget({
+        schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
         ref,
         pageNbeId,
         blockNbeId,
@@ -495,6 +502,7 @@ function buildNbePageIndex(
   visit(nodes);
   return {
     pageIndex: {
+      schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
       pageNbeId,
       pageId,
       blocks,
@@ -502,6 +510,18 @@ function buildNbePageIndex(
     },
     duplicateBlockNbeIds: duplicateRefs,
   };
+}
+
+function resolveNbeTargetBlockId(
+  block: NotionApiBlock,
+  parentBlock: NotionApiBlock | null,
+  siblingIndex: number,
+): string {
+  const isHeading = block.type === "heading_1" || block.type === "heading_2" || block.type === "heading_3";
+  if (parentBlock?.type === "callout" && siblingIndex === 0 && isHeading) {
+    return parentBlock.id;
+  }
+  return block.id;
 }
 
 class LightweightNbePageScanner {
@@ -517,9 +537,10 @@ class LightweightNbePageScanner {
     const blocks: Record<string, string> = {};
     const duplicateRefs = new Set<string>();
     const topLevel = await this.client.listBlockChildren(pageId);
-    await this.processBlocks(topLevel, 1, pageNbeId, blocks, duplicateRefs);
+    await this.processBlocks(topLevel, 1, pageNbeId, blocks, duplicateRefs, null);
     return {
       pageIndex: {
+        schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
         pageNbeId,
         pageId,
         blocks,
@@ -535,14 +556,15 @@ class LightweightNbePageScanner {
     pageNbeId: string,
     resolvedBlocks: Record<string, string>,
     duplicateRefs: Set<string>,
+    parentBlock: NotionApiBlock | null,
   ): Promise<void> {
     if (depth > MAX_TREE_DEPTH) return;
-    await mapWithConcurrency(blocksAtDepth, REPOSITORY_TREE_CONCURRENCY, async (block) => {
-      this.indexBlockRefs(block, pageNbeId, resolvedBlocks, duplicateRefs);
+    await mapWithConcurrency(blocksAtDepth, REPOSITORY_TREE_CONCURRENCY, async (block, index) => {
+      this.indexBlockRefs(block, pageNbeId, resolvedBlocks, duplicateRefs, parentBlock, index);
       if (depth >= MAX_TREE_DEPTH) return;
       const children = await this.loadDescendantBlocks(block, depth + 1);
       if (children.length === 0) return;
-      await this.processBlocks(children, depth + 1, pageNbeId, resolvedBlocks, duplicateRefs);
+      await this.processBlocks(children, depth + 1, pageNbeId, resolvedBlocks, duplicateRefs, block);
     });
   }
 
@@ -551,17 +573,25 @@ class LightweightNbePageScanner {
     pageNbeId: string,
     resolvedBlocks: Record<string, string>,
     duplicateRefs: Set<string>,
+    parentBlock: NotionApiBlock | null = null,
+    siblingIndex = -1,
   ): void {
     const refs = extractNbeRefsFromBlock(block);
+    const targetBlockId = resolveNbeTargetBlockId(block, parentBlock, siblingIndex);
     for (const parsed of refs) {
       if (parsed.pageNbeId !== pageNbeId) continue;
-      if (resolvedBlocks[parsed.blockNbeId] && resolvedBlocks[parsed.blockNbeId] !== block.id) {
+      if (targetBlockId !== block.id) {
+        this.logger.debug(
+          `repository nbe-target promoted marker=${block.id} container=${targetBlockId} ref=${parsed.ref}`,
+        );
+      }
+      if (resolvedBlocks[parsed.blockNbeId] && resolvedBlocks[parsed.blockNbeId] !== targetBlockId) {
         duplicateRefs.add(parsed.blockNbeId);
         delete resolvedBlocks[parsed.blockNbeId];
         continue;
       }
       if (!duplicateRefs.has(parsed.blockNbeId)) {
-        resolvedBlocks[parsed.blockNbeId] = block.id;
+        resolvedBlocks[parsed.blockNbeId] = targetBlockId;
       }
     }
   }

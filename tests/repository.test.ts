@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { REPOSITORY_TREE_CONCURRENCY } from "../src/core/constants";
+import { NBE_RESOLUTION_SCHEMA_VERSION, REPOSITORY_TREE_CONCURRENCY } from "../src/core/constants";
 import { PluginError } from "../src/core/errors";
 import { Logger } from "../src/core/logger";
 import { NbeResolvedPageIndex, NbeResolvedTarget, NotionApiBlock, NotionApiDatabase, NotionApiPage } from "../src/core/models";
@@ -40,6 +40,42 @@ function makeHeading(id: string, level: 1 | 2 | 3, text: string): NotionApiBlock
           plain_text: text,
         },
       ],
+    },
+  };
+}
+
+function makeLinkedHeading(id: string, level: 1 | 2 | 3, href: string, text = "Callout title"): NotionApiBlock {
+  const type = `heading_${level}`;
+  return {
+    object: "block",
+    id,
+    type,
+    has_children: false,
+    [type]: {
+      rich_text: [
+        {
+          plain_text: text,
+          href,
+          text: {
+            content: text,
+            link: { url: href },
+          },
+        },
+      ],
+    },
+  };
+}
+
+function makeCallout(id: string, color = "blue_background", hasChildren = true): NotionApiBlock {
+  return {
+    object: "block",
+    id,
+    type: "callout",
+    has_children: hasChildren,
+    callout: {
+      rich_text: [],
+      icon: null,
+      color,
     },
   };
 }
@@ -218,6 +254,54 @@ describe("NotionRepository", () => {
     const second = await repo.getBlockTree("root", true);
     expect(second.children).toHaveLength(1);
     expect(second.children[0]?.block.id).toBe("child");
+  });
+
+  it("resolves an NBE marker in the first heading child to its callout container", async () => {
+    const ref = "p20260328153045-k7_b7k2m9";
+    const href = makeNbeUri(ref);
+    const callout = makeCallout("callout-1");
+    const title = makeLinkedHeading("title-1", 3, href);
+    const body = makePlainTextParagraph("body-1", "Callout body");
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => (id === callout.id ? callout : makeBlock(id, "paragraph"))),
+      listBlockChildren: vi.fn(async (id: string) => {
+        if (id === "page-1") return [callout];
+        if (id === callout.id) return [title, body];
+        return [];
+      }),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    const resolved = await repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true);
+
+    expect(resolved.blockId).toBe(callout.id);
+    expect(resolved.tree.block.type).toBe("callout");
+    expect(resolved.tree.children.map((child) => child.block.id)).toEqual([title.id, body.id]);
+  });
+
+  it("keeps an NBE marker in a non-first callout child bound to that child", async () => {
+    const ref = "p20260328153045-k7_b7k2m9";
+    const href = makeNbeUri(ref);
+    const callout = makeCallout("callout-2");
+    const leading = makePlainTextParagraph("leading-2", "Intro");
+    const title = makeLinkedHeading("title-2", 3, href);
+    const client = {
+      searchDatabases: vi.fn(async () => [makeDatabase("db-1")]),
+      queryDatabaseByNbeId: vi.fn(async () => [makePage("page-1", "p20260328153045-k7")]),
+      getBlock: vi.fn(async (id: string) => (id === title.id ? title : makeBlock(id, "paragraph"))),
+      listBlockChildren: vi.fn(async (id: string) => {
+        if (id === "page-1") return [callout];
+        if (id === callout.id) return [leading, title];
+        return [];
+      }),
+    };
+
+    const repo = new NotionRepository(client, new AsyncTtlCache(5_000), new Logger(), "tkn");
+    const resolved = await repo.getBlockTreeByNbeRef("p20260328153045-k7", "b7k2m9", true);
+
+    expect(resolved.blockId).toBe(title.id);
   });
 
   it("extracts heading section until next same or higher level heading", async () => {
@@ -630,6 +714,7 @@ describe("NotionRepository", () => {
     const resolutionStore = createResolutionStore({
       tkn: {
         "p20260328153045-k7": {
+          schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
           pageNbeId: "p20260328153045-k7",
           pageId: "page-1",
           blocks: {
@@ -659,6 +744,7 @@ describe("NotionRepository", () => {
       {
         tkn: {
           "p20260328153045-k7": {
+            schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
             pageNbeId: "p20260328153045-k7",
             pageId: "page-1",
             blocks: {
@@ -671,6 +757,7 @@ describe("NotionRepository", () => {
       {
         tkn: {
           "p20260328153045-k7_b7k2m9": {
+            schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
             ref: "p20260328153045-k7_b7k2m9",
             pageNbeId: "p20260328153045-k7",
             blockNbeId: "b7k2m9",
@@ -700,6 +787,7 @@ describe("NotionRepository", () => {
     const resolutionStore = createResolutionStore({
       tkn: {
         "p20260328153045-k7": {
+          schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
           pageNbeId: "p20260328153045-k7",
           pageId: "page-1",
           blocks: {
@@ -721,6 +809,7 @@ describe("NotionRepository", () => {
 
     expect(resolved.blockId).toBe("block-1");
     expect(resolutionStore.setResolvedTarget).toHaveBeenCalledWith("tkn", {
+      schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
       ref: "p20260328153045-k7_b7k2m9",
       pageNbeId: "p20260328153045-k7",
       blockNbeId: "b7k2m9",
@@ -737,6 +826,7 @@ describe("NotionRepository", () => {
       {
         tkn: {
           "p20260328153045-k7": {
+            schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
             pageNbeId: "p20260328153045-k7",
             pageId: "page-1",
             blocks: {
@@ -749,6 +839,7 @@ describe("NotionRepository", () => {
       {
         tkn: {
           [ref]: {
+            schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
             ref,
             pageNbeId: "p20260328153045-k7",
             blockNbeId: "b7k2m9",
@@ -777,6 +868,7 @@ describe("NotionRepository", () => {
     expect(resolved.blockId).toBe("block-fresh");
     expect(resolutionStore.deleteResolvedTarget).toHaveBeenCalledWith("tkn", ref);
     expect(resolutionStore.setResolvedTarget).toHaveBeenCalledWith("tkn", {
+      schemaVersion: NBE_RESOLUTION_SCHEMA_VERSION,
       ref,
       pageNbeId: "p20260328153045-k7",
       blockNbeId: "b7k2m9",

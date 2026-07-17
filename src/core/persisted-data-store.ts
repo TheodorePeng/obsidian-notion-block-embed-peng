@@ -368,6 +368,7 @@ function cloneResolvedTargetCache(cache: NbeResolvedTargetCacheMap | null | unde
 
 function cloneResolvedPageIndex(pageIndex: NbeResolvedPageIndex): NbeResolvedPageIndex {
   return {
+    schemaVersion: pageIndex.schemaVersion,
     pageNbeId: pageIndex.pageNbeId,
     pageId: pageIndex.pageId,
     blocks: { ...pageIndex.blocks },
@@ -377,6 +378,7 @@ function cloneResolvedPageIndex(pageIndex: NbeResolvedPageIndex): NbeResolvedPag
 
 function cloneResolvedTarget(target: NbeResolvedTarget): NbeResolvedTarget {
   return {
+    schemaVersion: target.schemaVersion,
     ref: target.ref,
     pageNbeId: target.pageNbeId,
     blockNbeId: target.blockNbeId,

@@ -108,6 +108,7 @@ describe("coercePersistedPluginData", () => {
       nbeResolutionCache: {
         tkn123: {
           "p20260328153045-k7": {
+            schemaVersion: 2,
             pageNbeId: "p20260328153045-k7",
             pageId: "page-1",
             blocks: {
@@ -120,6 +121,7 @@ describe("coercePersistedPluginData", () => {
     });
 
     expect(data.nbeResolutionCache.tkn123?.["p20260328153045-k7"]).toEqual({
+      schemaVersion: 2,
       pageNbeId: "p20260328153045-k7",
       pageId: "page-1",
       blocks: {
@@ -129,6 +131,72 @@ describe("coercePersistedPluginData", () => {
     });
   });
 
+  it("drops NBE resolution caches from an older schema", () => {
+    const now = Date.now();
+    const data = coercePersistedPluginData({
+      settings: {},
+      nbeResolutionCache: {
+        tkn123: {
+          "p20260328153045-k7": {
+            pageNbeId: "p20260328153045-k7",
+            pageId: "page-1",
+            blocks: { b7k2m9: "heading-1" },
+            resolvedAt: now,
+          },
+        },
+      },
+      nbeResolvedTargetCache: {
+        tkn123: {
+          "p20260328153045-k7_b7k2m9": {
+            ref: "p20260328153045-k7_b7k2m9",
+            pageNbeId: "p20260328153045-k7",
+            blockNbeId: "b7k2m9",
+            pageId: "page-1",
+            blockId: "heading-1",
+            resolvedAt: now,
+          },
+        },
+      },
+    });
+
+    expect(data.nbeResolutionCache).toEqual({});
+    expect(data.nbeResolvedTargetCache).toEqual({});
+  });
+
+  it("preserves NBE resolution caches from the current schema", () => {
+    const now = Date.now();
+    const data = coercePersistedPluginData({
+      settings: {},
+      nbeResolutionCache: {
+        tkn123: {
+          "p20260328153045-k7": {
+            schemaVersion: 2,
+            pageNbeId: "p20260328153045-k7",
+            pageId: "page-1",
+            blocks: { b7k2m9: "callout-1" },
+            resolvedAt: now,
+          },
+        },
+      },
+      nbeResolvedTargetCache: {
+        tkn123: {
+          "p20260328153045-k7_b7k2m9": {
+            schemaVersion: 2,
+            ref: "p20260328153045-k7_b7k2m9",
+            pageNbeId: "p20260328153045-k7",
+            blockNbeId: "b7k2m9",
+            pageId: "page-1",
+            blockId: "callout-1",
+            resolvedAt: now,
+          },
+        },
+      },
+    });
+
+    expect(data.nbeResolutionCache.tkn123?.["p20260328153045-k7"]?.schemaVersion).toBe(2);
+    expect(data.nbeResolvedTargetCache.tkn123?.["p20260328153045-k7_b7k2m9"]?.schemaVersion).toBe(2);
+  });
+
   it("preserves NBE resolved target cache entries from persisted object", () => {
     const now = Date.now();
     const data = coercePersistedPluginData({
@@ -136,6 +204,7 @@ describe("coercePersistedPluginData", () => {
       nbeResolvedTargetCache: {
         tkn123: {
           "p20260328153045-k7_b7k2m9": {
+            schemaVersion: 2,
             ref: "p20260328153045-k7_b7k2m9",
             pageNbeId: "p20260328153045-k7",
             blockNbeId: "b7k2m9",
@@ -148,6 +217,7 @@ describe("coercePersistedPluginData", () => {
     });
 
     expect(data.nbeResolvedTargetCache.tkn123?.["p20260328153045-k7_b7k2m9"]).toEqual({
+      schemaVersion: 2,
       ref: "p20260328153045-k7_b7k2m9",
       pageNbeId: "p20260328153045-k7",
       blockNbeId: "b7k2m9",
@@ -164,6 +234,7 @@ describe("coercePersistedPluginData", () => {
       nbeResolvedTargetCache: {
         tkn123: {
           "p20260328153045-k7::b7k2m9": {
+            schemaVersion: 2,
             ref: "p20260328153045-k7::b7k2m9",
             pageNbeId: "p20260328153045-k7",
             blockNbeId: "b7k2m9",
@@ -190,6 +261,7 @@ describe("coercePersistedPluginData", () => {
         Array.from({ length: NBE_RESOLUTION_CACHE_MAX_PAGES_PER_TOKEN + 2 }, (_, index) => [
           `page-${index}`,
           {
+            schemaVersion: 2,
             pageNbeId: `page-${index}`,
             pageId: `notion-page-${index}`,
             blocks: {
@@ -206,6 +278,7 @@ describe("coercePersistedPluginData", () => {
           tkn123: {
             ...namespace,
             expired: {
+              schemaVersion: 2,
               pageNbeId: "expired",
               pageId: "expired-page",
               blocks: {},
@@ -234,6 +307,7 @@ describe("coercePersistedPluginData", () => {
         Array.from({ length: NBE_RESOLVED_TARGET_CACHE_MAX_REFS_PER_TOKEN + 2 }, (_, index) => [
           `page_block-${index}`,
           {
+            schemaVersion: 2,
             ref: `page_block-${index}`,
             pageNbeId: "page",
             blockNbeId: `block-${index}`,
@@ -250,6 +324,7 @@ describe("coercePersistedPluginData", () => {
           tkn123: {
             ...namespace,
             expired: {
+              schemaVersion: 2,
               ref: "expired",
               pageNbeId: "page",
               blockNbeId: "expired",
