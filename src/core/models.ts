@@ -137,6 +137,17 @@ export interface EmbedRichText {
   };
 }
 
+export type EmbedCalloutIcon =
+  | {
+      kind: "emoji";
+      value: string;
+    }
+  | {
+      kind: "image";
+      url: string;
+      alt?: string;
+    };
+
 export interface EmbedBlockProps {
   checked?: boolean;
   codeLanguage?: string;
@@ -145,6 +156,13 @@ export interface EmbedBlockProps {
   columnWidthRatio?: number;
   equationExpression?: string;
   syncedFromBlockId?: string | null;
+  calloutColor?: string;
+  calloutIcon?: EmbedCalloutIcon;
+  tableWidth?: number;
+  tableHasColumnHeader?: boolean;
+  tableHasRowHeader?: boolean;
+  tableCells?: EmbedRichText[][];
+  unsupportedBlockType?: string;
 }
 
 export interface EmbedBlockCapabilities {

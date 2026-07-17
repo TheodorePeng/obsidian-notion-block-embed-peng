@@ -125,6 +125,154 @@
   margin: 0;
 }
 
+.nbe-callout {
+  --nbe-callout-accent: var(--interactive-accent);
+  --nbe-callout-background: color-mix(in srgb, var(--background-secondary) 82%, transparent);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--nbe-callout-accent) 34%, var(--background-modifier-border));
+  border-left: 3px solid var(--nbe-callout-accent);
+  border-radius: 8px;
+  background: var(--nbe-callout-background);
+}
+
+.nbe-callout[data-nbe-callout-color="gray"],
+.nbe-callout[data-nbe-callout-color="gray_background"] {
+  --nbe-callout-accent: var(--text-muted);
+  --nbe-callout-background: color-mix(in srgb, var(--background-secondary) 82%, transparent);
+}
+
+.nbe-callout[data-nbe-callout-color="brown"],
+.nbe-callout[data-nbe-callout-color="brown_background"] {
+  --nbe-callout-accent: #a06a45;
+  --nbe-callout-background: color-mix(in srgb, #a06a45 11%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="orange"],
+.nbe-callout[data-nbe-callout-color="orange_background"] {
+  --nbe-callout-accent: #d97706;
+  --nbe-callout-background: color-mix(in srgb, #d97706 12%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="yellow"],
+.nbe-callout[data-nbe-callout-color="yellow_background"] {
+  --nbe-callout-accent: #ca8a04;
+  --nbe-callout-background: color-mix(in srgb, #ca8a04 12%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="green"],
+.nbe-callout[data-nbe-callout-color="green_background"] {
+  --nbe-callout-accent: #16a34a;
+  --nbe-callout-background: color-mix(in srgb, #16a34a 11%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="blue"],
+.nbe-callout[data-nbe-callout-color="blue_background"] {
+  --nbe-callout-accent: #2563eb;
+  --nbe-callout-background: color-mix(in srgb, #2563eb 11%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="purple"],
+.nbe-callout[data-nbe-callout-color="purple_background"] {
+  --nbe-callout-accent: #7c3aed;
+  --nbe-callout-background: color-mix(in srgb, #7c3aed 11%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="pink"],
+.nbe-callout[data-nbe-callout-color="pink_background"] {
+  --nbe-callout-accent: #db2777;
+  --nbe-callout-background: color-mix(in srgb, #db2777 11%, var(--background-primary));
+}
+
+.nbe-callout[data-nbe-callout-color="red"],
+.nbe-callout[data-nbe-callout-color="red_background"] {
+  --nbe-callout-accent: #dc2626;
+  --nbe-callout-background: color-mix(in srgb, #dc2626 11%, var(--background-primary));
+}
+
+.nbe-callout-icon {
+  flex: 0 0 22px;
+  width: 22px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.nbe-callout-icon img {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.nbe-callout-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.nbe-callout-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-weight: 600;
+}
+
+.nbe-callout-children {
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.nbe-callout-children > .nbe-block:last-child {
+  margin-bottom: 0;
+}
+
+.nbe-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.nbe-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  background: var(--background-primary);
+}
+
+.nbe-table th,
+.nbe-table td {
+  min-width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  vertical-align: top;
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.nbe-table th {
+  background: color-mix(in srgb, var(--background-secondary) 78%, var(--background-primary));
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.nbe-table td {
+  color: var(--text-normal);
+}
+
+.nbe-divider {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
 .nbe-code {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);

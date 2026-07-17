@@ -1,11 +1,13 @@
 import {
   EmbedBlockNode,
+  EmbedCalloutIcon,
   EmbedRichText,
   NotionApiBlock,
   NotionApiBlockTree,
   NotionApiRichText,
 } from "../core/models";
 import { getBlockCapabilities } from "../writeback/capabilities";
+import { getUnsupportedBlockType } from "./unsupported-block";
 
 function getTypeData(block: NotionApiBlock): Record<string, unknown> {
   const data = block[block.type];
@@ -88,6 +90,28 @@ function getImageProps(data: Record<string, unknown>): { imageUrl?: string; imag
   };
 }
 
+function getCalloutIcon(data: Record<string, unknown>): EmbedCalloutIcon | undefined {
+  const icon = data.icon;
+  if (!icon || typeof icon !== "object") return undefined;
+  const iconData = icon as Record<string, unknown>;
+  if (iconData.type === "emoji" && typeof iconData.emoji === "string" && iconData.emoji) {
+    return { kind: "emoji", value: iconData.emoji };
+  }
+
+  const iconType = iconData.type;
+  if (iconType !== "external" && iconType !== "file" && iconType !== "custom_emoji") return undefined;
+  const source = iconData[iconType];
+  if (!source || typeof source !== "object") return undefined;
+  const url = (source as { url?: unknown }).url;
+  if (typeof url !== "string" || !url.trim()) return undefined;
+  return { kind: "image", url, alt: iconType === "custom_emoji" ? "Custom emoji" : "Callout icon" };
+}
+
+function getTableCells(data: Record<string, unknown>): EmbedRichText[][] | undefined {
+  if (!Array.isArray(data.cells)) return undefined;
+  return data.cells.map((cell) => (Array.isArray(cell) ? mapRichTextList(cell as NotionApiRichText[]) : []));
+}
+
 function getProps(block: NotionApiBlock): {
   checked?: boolean;
   codeLanguage?: string;
@@ -96,6 +120,13 @@ function getProps(block: NotionApiBlock): {
   columnWidthRatio?: number;
   equationExpression?: string;
   syncedFromBlockId?: string | null;
+  calloutColor?: string;
+  calloutIcon?: EmbedCalloutIcon;
+  tableWidth?: number;
+  tableHasColumnHeader?: boolean;
+  tableHasRowHeader?: boolean;
+  tableCells?: EmbedRichText[][];
+  unsupportedBlockType?: string;
 } {
   const data = getTypeData(block);
   if (block.type === "to_do") {
@@ -125,6 +156,29 @@ function getProps(block: NotionApiBlock): {
     const syncedFrom = data.synced_from as { block_id?: unknown } | null | undefined;
     return {
       syncedFromBlockId: typeof syncedFrom?.block_id === "string" ? syncedFrom.block_id : null,
+    };
+  }
+  if (block.type === "callout") {
+    return {
+      calloutColor: typeof data.color === "string" ? data.color : undefined,
+      calloutIcon: getCalloutIcon(data),
+    };
+  }
+  if (block.type === "table") {
+    return {
+      tableWidth: typeof data.table_width === "number" ? data.table_width : undefined,
+      tableHasColumnHeader: Boolean(data.has_column_header),
+      tableHasRowHeader: Boolean(data.has_row_header),
+    };
+  }
+  if (block.type === "table_row") {
+    return {
+      tableCells: getTableCells(data),
+    };
+  }
+  if (block.type === "unsupported") {
+    return {
+      unsupportedBlockType: getUnsupportedBlockType(block) ?? "unknown",
     };
   }
   return {};

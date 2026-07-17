@@ -116,6 +116,8 @@ export function attachRowActions(host: HTMLElement, node: EmbedBlockNode, ctx: B
 export function renderUnsupported(parent: HTMLElement, node: EmbedBlockNode): void {
   const box = document.createElement("div");
   box.className = "nbe-unsupported";
-  box.textContent = `Unsupported block type: ${node.type}`;
+  box.textContent = node.props.unsupportedBlockType
+    ? `Content unavailable via Notion API: ${node.props.unsupportedBlockType}`
+    : `Unsupported block type: ${node.type}`;
   parent.appendChild(box);
 }

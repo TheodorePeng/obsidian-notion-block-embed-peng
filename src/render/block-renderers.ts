@@ -3,16 +3,20 @@ import { renderLayoutBlockContent } from './blocks/layout';
 import { renderMediaBlockContent } from './blocks/media';
 import { renderUnsupported } from './blocks/shared';
 import { renderTextBlockContent } from './blocks/text';
+import { renderCalloutBlockContent } from './blocks/callout';
+import { renderTableBlockContent } from './blocks/table';
 import { BlockRenderContext } from './blocks/types';
 import { createPlainTreeShell, renderListBlock, renderToggleBlock } from './blocks/tree';
 import { createChildTreeContext, createRootTreeContext, buildTreeGuideState, getTreeIconKind } from './tree/state';
 import { TreeContext, TreeGuideState } from './tree/types';
 
 function layoutBlockOwnsChildRendering(type: string): boolean {
-  return type === 'column' || type === 'column_list' || type === 'synced_block';
+  return type === 'callout' || type === 'column' || type === 'column_list' || type === 'synced_block' || type === 'table';
 }
 
 function renderBlockContent(host: HTMLElement, node: EmbedBlockNode, ctx: BlockRenderContext): void {
+  if (renderCalloutBlockContent(host, node, ctx, renderNodes)) return;
+  if (renderTableBlockContent(host, node, ctx)) return;
   if (renderLayoutBlockContent(host, node, ctx, renderNodes)) return;
   if (renderTextBlockContent(host, node, ctx, renderNodes)) return;
   if (renderMediaBlockContent(host, node, ctx)) return;

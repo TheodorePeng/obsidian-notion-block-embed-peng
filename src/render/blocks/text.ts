@@ -86,6 +86,13 @@ export function renderTextBlockContent(
     return true;
   }
 
+  if (node.type === 'divider') {
+    const divider = document.createElement('hr');
+    divider.className = 'nbe-divider';
+    host.appendChild(divider);
+    return true;
+  }
+
   if (node.type === 'to_do') {
     const row = document.createElement('div');
     row.className = 'nbe-todo nbe-item-line nbe-item-line-inline-controls';
