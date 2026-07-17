@@ -2,6 +2,7 @@ import { MAX_TREE_DEPTH, REPOSITORY_TREE_CONCURRENCY } from "../core/constants";
 import { Logger } from "../core/logger";
 import { NotionApiBlock, NotionApiBlockTree, NotionApiDatabase, NotionApiPage } from "../core/models";
 import { mapWithConcurrency } from "../embed/concurrency";
+import { getUnsupportedBlockType } from "./unsupported-block";
 
 export interface NotionReadClient {
   getBlock(blockId: string): Promise<NotionApiBlock>;
@@ -27,6 +28,11 @@ export class NotionChildrenHydrator {
 
   async loadChildrenForBlock(block: NotionApiBlock, depth: number): Promise<NotionApiBlockTree[]> {
     if (!block.has_children || depth > MAX_TREE_DEPTH) return [];
+    const unsupportedType = getUnsupportedBlockType(block);
+    if (unsupportedType) {
+      this.logger.debug(`repository hydration skipped unsupported block=${block.id} type=${unsupportedType}`);
+      return [];
+    }
     if (block.type !== "synced_block") {
       return this.loadChildren(block.id, depth);
     }
